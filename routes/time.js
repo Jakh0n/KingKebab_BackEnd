@@ -1,7 +1,7 @@
 const express = require('express')
 const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
-const PDFDocument = require('pdfkit')
+const pdf = require('html-pdf')
 const router = express.Router()
 
 // Oylar ro'yxati
@@ -98,7 +98,6 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 	try {
 		const { userId, month, year } = req.params
 
-		// Ishchi ma'lumotlarini olish
 		const timeEntries = await TimeEntry.find({
 			user: userId,
 			$expr: {
@@ -115,63 +114,43 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 			return res.status(404).json({ message: 'No entries found' })
 		}
 
-		// PDF yaratish
-		const doc = new PDFDocument({
-			size: 'A4',
-			margin: 50,
-			bufferPages: true,
-		})
-
-		// Create a buffer to store the PDF
-		let buffers = []
-		doc.on('data', buffers.push.bind(buffers))
-		doc.on('end', () => {
-			let pdfData = Buffer.concat(buffers)
-			res.writeHead(200, {
-				'Content-Length': Buffer.byteLength(pdfData),
-				'Content-Type': 'application/pdf',
-				'Content-Disposition': `attachment; filename="${
-					timeEntries[0].user.username
-				}-${months[parseInt(month) - 1]}-${year}.pdf"`,
-			})
-			res.end(pdfData)
-		})
-
-		// PDF dizayni
-		doc.font('Helvetica-Bold')
-		doc.fontSize(16)
-		doc.text(`${timeEntries[0].user.username} - Vaqt hisoboti`, {
-			align: 'center',
-		})
-		doc.moveDown()
-
-		doc.fontSize(12)
-		doc.text(
-			`Lavozim: ${
-				timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
-			}`
-		)
-		doc.text(`Oy: ${month}`)
-		doc.text(`Yil: ${year}`)
-		doc.moveDown()
-
 		// Jami statistika
 		const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
 		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
 
-		doc.text(`Jami ishlagan soat: ${totalHours.toFixed(1)} soat`)
-		doc.text(`Oddiy kunlar: ${regularDays} kun`)
-		doc.text(`Qo'shimcha kunlar: ${overtimeDays} kun`)
-		doc.moveDown()
-
-		// Kunlik ma'lumotlar
-		doc.font('Helvetica-Bold')
-		doc.text('Kunlik hisobot:', { underline: true })
-		doc.moveDown()
+		// Create HTML content
+		let htmlContent = `
+			<html>
+				<head>
+					<style>
+						body { font-family: Arial, sans-serif; padding: 20px; }
+						.header { text-align: center; margin-bottom: 20px; }
+						.info { margin-bottom: 20px; }
+						.entry { margin-bottom: 15px; padding: 10px; border-bottom: 1px solid #eee; }
+						.total { margin-top: 20px; font-weight: bold; }
+					</style>
+				</head>
+				<body>
+					<div class="header">
+						<h1>${timeEntries[0].user.username} - Vaqt hisoboti</h1>
+					</div>
+					<div class="info">
+						<p>Lavozim: ${
+							timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
+						}</p>
+						<p>Oy: ${months[parseInt(month) - 1]}</p>
+						<p>Yil: ${year}</p>
+					</div>
+					<div class="total">
+						<p>Jami ishlagan soat: ${totalHours.toFixed(1)} soat</p>
+						<p>Oddiy kunlar: ${regularDays} kun</p>
+						<p>Qo'shimcha kunlar: ${overtimeDays} kun</p>
+					</div>
+					<h2>Kunlik hisobot:</h2>
+				`
 
 		timeEntries.forEach(entry => {
-			doc.font('Helvetica')
 			const date = new Date(entry.date).toLocaleDateString('uz-UZ')
 			const startTime = new Date(entry.startTime).toLocaleTimeString('uz-UZ', {
 				hour: '2-digit',
@@ -182,15 +161,52 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 				minute: '2-digit',
 			})
 
-			doc.text(`Sana: ${date}`)
-			doc.text(`Vaqt: ${startTime} - ${endTime}`)
-			doc.text(`Ishlagan soat: ${entry.hours} soat`)
-			doc.text(`Tanaffus: ${entry.breakMinutes} daqiqa`)
-			doc.text(`Izoh: ${entry.description}`)
-			doc.moveDown()
+			htmlContent += `
+				<div class="entry">
+					<p>Sana: ${date}</p>
+					<p>Vaqt: ${startTime} - ${endTime}</p>
+					<p>Ishlagan soat: ${entry.hours} soat</p>
+					<p>Tanaffus: ${entry.breakMinutes} daqiqa</p>
+					${entry.description ? `<p>Izoh: ${entry.description}</p>` : ''}
+				</div>
+			`
 		})
 
-		doc.end()
+		htmlContent += `
+				</body>
+			</html>
+		`
+
+		// PDF options
+		const options = {
+			format: 'A4',
+			border: {
+				top: '20px',
+				right: '20px',
+				bottom: '20px',
+				left: '20px',
+			},
+		}
+
+		// Generate PDF
+		pdf.create(htmlContent, options).toBuffer((err, buffer) => {
+			if (err) {
+				console.error('Error creating PDF:', err)
+				return res.status(500).json({
+					message: 'Error generating PDF',
+					error: err.message,
+				})
+			}
+
+			res.setHeader('Content-Type', 'application/pdf')
+			res.setHeader(
+				'Content-Disposition',
+				`attachment; filename="${timeEntries[0].user.username}-${
+					months[parseInt(month) - 1]
+				}-${year}.pdf"`
+			)
+			res.send(buffer)
+		})
 	} catch (error) {
 		console.error('Error generating PDF:', error)
 		res.status(500).json({
@@ -222,63 +238,43 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 			return res.status(404).json({ message: 'No entries found' })
 		}
 
-		// PDF yaratish
-		const doc = new PDFDocument({
-			size: 'A4',
-			margin: 50,
-			bufferPages: true,
-		})
-
-		// Create a buffer to store the PDF
-		let buffers = []
-		doc.on('data', buffers.push.bind(buffers))
-		doc.on('end', () => {
-			let pdfData = Buffer.concat(buffers)
-			res.writeHead(200, {
-				'Content-Length': Buffer.byteLength(pdfData),
-				'Content-Type': 'application/pdf',
-				'Content-Disposition': `attachment; filename="${
-					timeEntries[0].user.username
-				}-${months[parseInt(month) - 1]}-${year}.pdf"`,
-			})
-			res.end(pdfData)
-		})
-
-		// PDF dizayni
-		doc.font('Helvetica-Bold')
-		doc.fontSize(16)
-		doc.text(`${timeEntries[0].user.username} - Vaqt hisoboti`, {
-			align: 'center',
-		})
-		doc.moveDown()
-
-		doc.fontSize(12)
-		doc.text(
-			`Lavozim: ${
-				timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
-			}`
-		)
-		doc.text(`Oy: ${months[parseInt(month) - 1]}`)
-		doc.text(`Yil: ${year}`)
-		doc.moveDown()
-
 		// Jami statistika
 		const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
 		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
 
-		doc.text(`Jami ishlagan soat: ${totalHours.toFixed(1)} soat`)
-		doc.text(`Oddiy kunlar: ${regularDays} kun`)
-		doc.text(`Qo'shimcha kunlar: ${overtimeDays} kun`)
-		doc.moveDown()
-
-		// Kunlik ma'lumotlar
-		doc.font('Helvetica-Bold')
-		doc.text('Kunlik hisobot:', { underline: true })
-		doc.moveDown()
+		// Create HTML content
+		let htmlContent = `
+			<html>
+				<head>
+					<style>
+						body { font-family: Arial, sans-serif; padding: 20px; }
+						.header { text-align: center; margin-bottom: 20px; }
+						.info { margin-bottom: 20px; }
+						.entry { margin-bottom: 15px; padding: 10px; border-bottom: 1px solid #eee; }
+						.total { margin-top: 20px; font-weight: bold; }
+					</style>
+				</head>
+				<body>
+					<div class="header">
+						<h1>${timeEntries[0].user.username} - Vaqt hisoboti</h1>
+					</div>
+					<div class="info">
+						<p>Lavozim: ${
+							timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
+						}</p>
+						<p>Oy: ${months[parseInt(month) - 1]}</p>
+						<p>Yil: ${year}</p>
+					</div>
+					<div class="total">
+						<p>Jami ishlagan soat: ${totalHours.toFixed(1)} soat</p>
+						<p>Oddiy kunlar: ${regularDays} kun</p>
+						<p>Qo'shimcha kunlar: ${overtimeDays} kun</p>
+					</div>
+					<h2>Kunlik hisobot:</h2>
+				`
 
 		timeEntries.forEach(entry => {
-			doc.font('Helvetica')
 			const date = new Date(entry.date).toLocaleDateString('uz-UZ')
 			const startTime = new Date(entry.startTime).toLocaleTimeString('uz-UZ', {
 				hour: '2-digit',
@@ -289,15 +285,52 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 				minute: '2-digit',
 			})
 
-			doc.text(`Sana: ${date}`)
-			doc.text(`Vaqt: ${startTime} - ${endTime}`)
-			doc.text(`Ishlagan soat: ${entry.hours} soat`)
-			doc.text(`Tanaffus: ${entry.breakMinutes} daqiqa`)
-			doc.text(`Izoh: ${entry.description}`)
-			doc.moveDown()
+			htmlContent += `
+				<div class="entry">
+					<p>Sana: ${date}</p>
+					<p>Vaqt: ${startTime} - ${endTime}</p>
+					<p>Ishlagan soat: ${entry.hours} soat</p>
+					<p>Tanaffus: ${entry.breakMinutes} daqiqa</p>
+					${entry.description ? `<p>Izoh: ${entry.description}</p>` : ''}
+				</div>
+			`
 		})
 
-		doc.end()
+		htmlContent += `
+				</body>
+			</html>
+		`
+
+		// PDF options
+		const options = {
+			format: 'A4',
+			border: {
+				top: '20px',
+				right: '20px',
+				bottom: '20px',
+				left: '20px',
+			},
+		}
+
+		// Generate PDF
+		pdf.create(htmlContent, options).toBuffer((err, buffer) => {
+			if (err) {
+				console.error('Error creating PDF:', err)
+				return res.status(500).json({
+					message: 'Error generating PDF',
+					error: err.message,
+				})
+			}
+
+			res.setHeader('Content-Type', 'application/pdf')
+			res.setHeader(
+				'Content-Disposition',
+				`attachment; filename="${timeEntries[0].user.username}-${
+					months[parseInt(month) - 1]
+				}-${year}.pdf"`
+			)
+			res.send(buffer)
+		})
 	} catch (error) {
 		console.error('Error generating PDF:', error)
 		res.status(500).json({
