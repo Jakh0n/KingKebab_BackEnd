@@ -116,18 +116,26 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 		}
 
 		// PDF yaratish
-		const doc = new PDFDocument()
+		const doc = new PDFDocument({
+			size: 'A4',
+			margin: 50,
+			bufferPages: true,
+		})
 
-		// PDF headerini o'rnatish
-		res.setHeader('Content-Type', 'application/pdf')
-		res.setHeader(
-			'Content-Disposition',
-			`attachment; filename="${timeEntries[0].user.username}-${
-				months[parseInt(month) - 1]
-			}-${year}.pdf"`
-		)
-
-		doc.pipe(res)
+		// Create a buffer to store the PDF
+		let buffers = []
+		doc.on('data', buffers.push.bind(buffers))
+		doc.on('end', () => {
+			let pdfData = Buffer.concat(buffers)
+			res.writeHead(200, {
+				'Content-Length': Buffer.byteLength(pdfData),
+				'Content-Type': 'application/pdf',
+				'Content-Disposition': `attachment; filename="${
+					timeEntries[0].user.username
+				}-${months[parseInt(month) - 1]}-${year}.pdf"`,
+			})
+			res.end(pdfData)
+		})
 
 		// PDF dizayni
 		doc.font('Helvetica-Bold')
@@ -185,7 +193,10 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 		doc.end()
 	} catch (error) {
 		console.error('Error generating PDF:', error)
-		res.status(500).json({ message: 'Error generating PDF' })
+		res.status(500).json({
+			message: 'Error generating PDF',
+			error: error.message,
+		})
 	}
 })
 
@@ -195,7 +206,6 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 		const { month, year } = req.params
 		const userId = req.user.userId
 
-		// Ishchi ma'lumotlarini olish
 		const timeEntries = await TimeEntry.find({
 			user: userId,
 			$expr: {
@@ -213,18 +223,26 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 		}
 
 		// PDF yaratish
-		const doc = new PDFDocument()
+		const doc = new PDFDocument({
+			size: 'A4',
+			margin: 50,
+			bufferPages: true,
+		})
 
-		// PDF headerini o'rnatish
-		res.setHeader('Content-Type', 'application/pdf')
-		res.setHeader(
-			'Content-Disposition',
-			`attachment; filename="${timeEntries[0].user.username}-${
-				months[parseInt(month) - 1]
-			}-${year}.pdf"`
-		)
-
-		doc.pipe(res)
+		// Create a buffer to store the PDF
+		let buffers = []
+		doc.on('data', buffers.push.bind(buffers))
+		doc.on('end', () => {
+			let pdfData = Buffer.concat(buffers)
+			res.writeHead(200, {
+				'Content-Length': Buffer.byteLength(pdfData),
+				'Content-Type': 'application/pdf',
+				'Content-Disposition': `attachment; filename="${
+					timeEntries[0].user.username
+				}-${months[parseInt(month) - 1]}-${year}.pdf"`,
+			})
+			res.end(pdfData)
+		})
 
 		// PDF dizayni
 		doc.font('Helvetica-Bold')
@@ -282,7 +300,10 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 		doc.end()
 	} catch (error) {
 		console.error('Error generating PDF:', error)
-		res.status(500).json({ message: 'Error generating PDF' })
+		res.status(500).json({
+			message: 'Error generating PDF',
+			error: error.message,
+		})
 	}
 })
 
