@@ -15,7 +15,10 @@ const app = express()
 app.use(helmet())
 app.use(
 	cors({
-		origin: process.env.FRONTEND_URL,
+		origin: [
+			process.env.FRONTEND_URL,
+			'https://sizning-frontend-domeningiz.vercel.app',
+		],
 		credentials: true,
 	})
 )
