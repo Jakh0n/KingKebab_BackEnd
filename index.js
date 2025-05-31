@@ -17,7 +17,7 @@ app.use(
 	cors({
 		origin: [
 			process.env.FRONTEND_URL,
-			'https://sizning-frontend-domeningiz.vercel.app',
+			'https://king-kebab-front-end.vercel.app/',
 		],
 		credentials: true,
 	})
