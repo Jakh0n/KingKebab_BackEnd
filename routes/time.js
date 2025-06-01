@@ -33,23 +33,57 @@ router.post('/', auth, async (req, res) => {
 			breakMinutes,
 		})
 
+		// Vaqtlarni tekshirish
+		const start = new Date(startTime)
+		const end = new Date(endTime)
+		const workDate = new Date(date)
+
+		if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
+			return res.status(400).json({ message: "Noto'g'ri vaqt formati" })
+		}
+
+		// Soatlarni hisoblash
+		let hours
+		const startHour = start.getHours()
+		const endHour = end.getHours()
+		const startMinutes = start.getMinutes()
+		const endMinutes = end.getMinutes()
+
+		// Agar tugash vaqti boshlash vaqtidan katta bo'lsa
+		if (endHour > startHour) {
+			hours = endHour - startHour + (endMinutes - startMinutes) / 60
+		}
+		// Agar tugash vaqti boshlash vaqtidan kichik bo'lsa (masalan 21:00 - 09:00)
+		else {
+			hours = 24 - startHour + endHour + (endMinutes - startMinutes) / 60
+		}
+
+		// Tanaffusni ayirish
+		const breakHours = (parseInt(breakMinutes) || 0) / 60
+		hours = hours - breakHours
+
 		const timeEntry = new TimeEntry({
 			user: req.user.userId,
-			startTime: new Date(startTime),
-			endTime: new Date(endTime),
-			date: new Date(date),
+			startTime: start,
+			endTime: end,
+			date: workDate,
 			description,
 			breakMinutes: parseInt(breakMinutes) || 0,
 			position: req.user.position,
+			hours: Number(hours.toFixed(1)),
 		})
 
-		console.log('TimeEntry before save:', timeEntry)
+		console.log('TimeEntry before save:', {
+			...timeEntry.toObject(),
+			calculatedHours: hours,
+			startHour,
+			endHour,
+			startMinutes,
+			endMinutes,
+		})
 
 		await timeEntry.save()
-
-		// Populate user ma'lumotlari bilan qaytarish
 		const savedEntry = await timeEntry.populate('user', '_id username position')
-
 		console.log('Saved entry:', savedEntry)
 
 		res.status(201).json(savedEntry)
@@ -337,6 +371,95 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 			message: 'Error generating PDF',
 			error: error.message,
 		})
+	}
+})
+
+// Vaqtlarni olish (kunlik)
+router.get('/daily/:date', auth, async (req, res) => {
+	try {
+		const requestedDate = new Date(req.params.date)
+		const startOfDay = new Date(requestedDate.setHours(0, 0, 0, 0))
+		const endOfDay = new Date(requestedDate.setHours(23, 59, 59, 999))
+
+		const entries = await TimeEntry.find({
+			user: req.user.userId,
+			date: {
+				$gte: startOfDay,
+				$lte: endOfDay,
+			},
+		}).populate('user', '_id username position')
+
+		res.json(entries)
+	} catch (error) {
+		res.status(500).json({ message: 'Vaqtlarni olishda xatolik' })
+	}
+})
+
+// Vaqtlarni olish (haftalik)
+router.get('/weekly/:startDate', auth, async (req, res) => {
+	try {
+		const startDate = new Date(req.params.startDate)
+		const endDate = new Date(startDate)
+		endDate.setDate(endDate.getDate() + 7)
+
+		const entries = await TimeEntry.find({
+			user: req.user.userId,
+			date: {
+				$gte: startDate,
+				$lt: endDate,
+			},
+		}).populate('user', '_id username position')
+
+		res.json(entries)
+	} catch (error) {
+		res.status(500).json({ message: 'Vaqtlarni olishda xatolik' })
+	}
+})
+
+// Vaqt yozuvini yangilash
+router.put('/:id', auth, async (req, res) => {
+	try {
+		const { startTime, endTime, description, breakMinutes } = req.body
+		const timeEntry = await TimeEntry.findOne({
+			_id: req.params.id,
+			user: req.user.userId,
+		})
+
+		if (!timeEntry) {
+			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
+		}
+
+		timeEntry.startTime = new Date(startTime)
+		timeEntry.endTime = new Date(endTime)
+		timeEntry.description = description
+		timeEntry.breakMinutes = parseInt(breakMinutes) || 0
+
+		await timeEntry.save()
+		const updatedEntry = await timeEntry.populate(
+			'user',
+			'_id username position'
+		)
+		res.json(updatedEntry)
+	} catch (error) {
+		res.status(500).json({ message: 'Yangilashda xatolik yuz berdi' })
+	}
+})
+
+// Vaqt yozuvini o'chirish
+router.delete('/:id', auth, async (req, res) => {
+	try {
+		const timeEntry = await TimeEntry.findOneAndDelete({
+			_id: req.params.id,
+			user: req.user.userId,
+		})
+
+		if (!timeEntry) {
+			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
+		}
+
+		res.json({ message: "Vaqt yozuvi o'chirildi" })
+	} catch (error) {
+		res.status(500).json({ message: "O'chirishda xatolik yuz berdi" })
 	}
 })
 

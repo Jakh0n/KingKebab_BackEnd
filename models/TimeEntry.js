@@ -45,10 +45,31 @@ const timeEntrySchema = new mongoose.Schema(
 timeEntrySchema.pre('save', function (next) {
 	const start = new Date(this.startTime)
 	const end = new Date(this.endTime)
-	const diffMs = end - start
-	const diffHrs = diffMs / (1000 * 60 * 60)
+
+	// Soatlarni olish
+	const startHour = start.getHours()
+	const endHour = end.getHours()
+
+	let workHours
+	if (endHour < startHour) {
+		// Agar tugash vaqti kichik bo'lsa (masalan 21:00 - 09:00)
+		workHours = 24 - startHour + endHour
+	} else {
+		// Oddiy holat (masalan 09:00 - 17:00)
+		workHours = endHour - startHour
+	}
+
+	// Minutlarni qo'shish
+	const startMinutes = start.getMinutes()
+	const endMinutes = end.getMinutes()
+	const minutesDiff = (endMinutes - startMinutes) / 60
+
+	workHours = workHours + minutesDiff
+
+	// Tanaffusni ayirish
 	const breakHrs = this.breakMinutes / 60
-	this.hours = Number((diffHrs - breakHrs).toFixed(1))
+	this.hours = Number((workHours - breakHrs).toFixed(1))
+
 	next()
 })
 

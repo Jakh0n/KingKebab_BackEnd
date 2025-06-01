@@ -13,13 +13,13 @@ const app = express()
 
 // Security middleware
 app.use(helmet())
+app.use(express.json())
 app.use(
 	cors({
-		origin: [
-			process.env.FRONTEND_URL,
-			'https://king-kebab-front-end.vercel.app/',
-		],
+		origin: [process.env.FRONTEND_URL, 'http://localhost:3000'],
 		credentials: true,
+		methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+		allowedHeaders: ['Content-Type', 'Authorization'],
 	})
 )
 
@@ -29,8 +29,6 @@ const limiter = rateLimit({
 	max: 100, // har bir IP dan 100 ta so'rov
 })
 app.use(limiter)
-
-app.use(express.json())
 
 // MongoDB connection with retry logic
 const connectWithRetry = () => {
