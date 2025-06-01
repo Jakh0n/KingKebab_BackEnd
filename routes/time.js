@@ -127,8 +127,8 @@ router.get('/all', adminAuth, async (req, res) => {
 	}
 })
 
-// Get worker's time entries PDF (admin only)
-router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
+// Get worker's time entries PDF
+router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 	try {
 		const { userId, month, year } = req.params
 
@@ -153,36 +153,119 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
 		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
 
-		// Create HTML content
+		// Create HTML content with improved design
 		let htmlContent = `
 			<html>
 				<head>
 					<style>
-						body { font-family: Arial, sans-serif; padding: 20px; }
-						.header { text-align: center; margin-bottom: 20px; }
-						.info { margin-bottom: 20px; }
-						.entry { margin-bottom: 15px; padding: 10px; border-bottom: 1px solid #eee; }
-						.total { margin-top: 20px; font-weight: bold; }
+						body { 
+							font-family: Arial, sans-serif; 
+							padding: 20px;
+							color: #333;
+						}
+						.header { 
+							text-align: center; 
+							margin-bottom: 30px;
+							border-bottom: 2px solid #4a90e2;
+							padding-bottom: 20px;
+						}
+						.info { 
+							margin-bottom: 30px;
+							display: flex;
+							justify-content: space-between;
+							background-color: #f8f9fa;
+							padding: 15px;
+							border-radius: 8px;
+						}
+						.info-item {
+							flex: 1;
+							text-align: center;
+						}
+						.entries-grid {
+							display: grid;
+							grid-template-columns: repeat(3, 1fr);
+							gap: 15px;
+							margin-top: 20px;
+						}
+						.entry {
+							background-color: #fff;
+							border: 1px solid #e0e0e0;
+							border-radius: 8px;
+							padding: 15px;
+							box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+						}
+						.entry-date {
+							font-weight: bold;
+							color: #4a90e2;
+							margin-bottom: 10px;
+						}
+						.entry-time {
+							color: #666;
+							margin-bottom: 5px;
+						}
+						.entry-hours {
+							font-weight: bold;
+							color: #28a745;
+						}
+						.total {
+							margin-top: 30px;
+							background-color: #4a90e2;
+							color: white;
+							padding: 20px;
+							border-radius: 8px;
+							display: flex;
+							justify-content: space-between;
+						}
+						.total-item {
+							text-align: center;
+							flex: 1;
+						}
+						.description {
+							color: #666;
+							font-style: italic;
+							margin-top: 5px;
+						}
 					</style>
 				</head>
 				<body>
 					<div class="header">
-						<h1>${timeEntries[0].user.username} - Vaqt hisoboti</h1>
+						<h1>${timeEntries[0].user.username}</h1>
+						<p>Vaqt hisoboti - ${months[parseInt(month) - 1]} ${year}</p>
 					</div>
+					
 					<div class="info">
-						<p>Lavozim: ${
-							timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
-						}</p>
-						<p>Oy: ${months[parseInt(month) - 1]}</p>
-						<p>Yil: ${year}</p>
+						<div class="info-item">
+							<h3>Lavozim</h3>
+							<p>${timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'}</p>
+						</div>
+						<div class="info-item">
+							<h3>Jami kunlar</h3>
+							<p>${timeEntries.length} kun</p>
+						</div>
+						<div class="info-item">
+							<h3>Jami soatlar</h3>
+							<p>${totalHours.toFixed(1)} soat</p>
+						</div>
 					</div>
+
 					<div class="total">
-						<p>Jami ishlagan soat: ${totalHours.toFixed(1)} soat</p>
-						<p>Oddiy kunlar: ${regularDays} kun</p>
-						<p>Qo'shimcha kunlar: ${overtimeDays} kun</p>
+						<div class="total-item">
+							<h3>Oddiy kunlar</h3>
+							<p>${regularDays} kun</p>
+						</div>
+						<div class="total-item">
+							<h3>Qo'shimcha kunlar</h3>
+							<p>${overtimeDays} kun</p>
+						</div>
+						<div class="total-item">
+							<h3>O'rtacha soat</h3>
+							<p>${(totalHours / timeEntries.length).toFixed(1)} soat</p>
+						</div>
 					</div>
-					<h2>Kunlik hisobot:</h2>
-				`
+
+					<h2 style="margin-top: 30px;">Kunlik hisobot:</h2>
+					<div class="entries-grid">
+		`
 
 		timeEntries.forEach(entry => {
 			const date = new Date(entry.date).toLocaleDateString('uz-UZ')
@@ -197,16 +280,27 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 
 			htmlContent += `
 				<div class="entry">
-					<p>Sana: ${date}</p>
-					<p>Vaqt: ${startTime} - ${endTime}</p>
-					<p>Ishlagan soat: ${entry.hours} soat</p>
-					<p>Tanaffus: ${entry.breakMinutes} daqiqa</p>
-					${entry.description ? `<p>Izoh: ${entry.description}</p>` : ''}
+					<div class="entry-date">${date}</div>
+					<div class="entry-time">
+						${startTime} - ${endTime}
+					</div>
+					<div class="entry-hours">
+						${entry.hours} soat
+					</div>
+					<div class="entry-time">
+						Tanaffus: ${entry.breakMinutes} daqiqa
+					</div>
+					${
+						entry.description
+							? `<div class="description">${entry.description}</div>`
+							: ''
+					}
 				</div>
 			`
 		})
 
 		htmlContent += `
+					</div>
 				</body>
 			</html>
 		`
@@ -220,33 +314,33 @@ router.get('/worker-pdf/:userId/:month/:year', adminAuth, async (req, res) => {
 				bottom: '20px',
 				left: '20px',
 			},
+			header: {
+				height: '15mm',
+			},
+			footer: {
+				height: '15mm',
+			},
 		}
 
 		// Generate PDF
 		pdf.create(htmlContent, options).toBuffer((err, buffer) => {
 			if (err) {
 				console.error('Error creating PDF:', err)
-				return res.status(500).json({
-					message: 'Error generating PDF',
-					error: err.message,
-				})
+				return res.status(500).json({ message: 'PDF yaratishda xatolik' })
 			}
 
 			res.setHeader('Content-Type', 'application/pdf')
 			res.setHeader(
 				'Content-Disposition',
-				`attachment; filename="${timeEntries[0].user.username}-${
+				`attachment; filename=${timeEntries[0].user.username}_${
 					months[parseInt(month) - 1]
-				}-${year}.pdf"`
+				}_${year}.pdf`
 			)
 			res.send(buffer)
 		})
 	} catch (error) {
 		console.error('Error generating PDF:', error)
-		res.status(500).json({
-			message: 'Error generating PDF',
-			error: error.message,
-		})
+		res.status(500).json({ message: 'PDF yaratishda xatolik' })
 	}
 })
 
@@ -416,10 +510,9 @@ router.get('/weekly/:startDate', auth, async (req, res) => {
 	}
 })
 
-// Vaqt yozuvini yangilash
-router.put('/:id', auth, async (req, res) => {
+// Vaqt yozuvini o'chirish
+router.delete('/:id', auth, async (req, res) => {
 	try {
-		const { startTime, endTime, description, breakMinutes } = req.body
 		const timeEntry = await TimeEntry.findOne({
 			_id: req.params.id,
 			user: req.user.userId,
@@ -429,26 +522,18 @@ router.put('/:id', auth, async (req, res) => {
 			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
 		}
 
-		timeEntry.startTime = new Date(startTime)
-		timeEntry.endTime = new Date(endTime)
-		timeEntry.description = description
-		timeEntry.breakMinutes = parseInt(breakMinutes) || 0
-
-		await timeEntry.save()
-		const updatedEntry = await timeEntry.populate(
-			'user',
-			'_id username position'
-		)
-		res.json(updatedEntry)
+		await timeEntry.deleteOne()
+		res.json({ message: "Vaqt yozuvi o'chirildi" })
 	} catch (error) {
-		res.status(500).json({ message: 'Yangilashda xatolik yuz berdi' })
+		console.error('Error:', error)
+		res.status(500).json({ message: 'Server xatosi' })
 	}
 })
 
-// Vaqt yozuvini o'chirish
-router.delete('/:id', auth, async (req, res) => {
+// Vaqt yozuvini yangilash
+router.put('/:id', auth, async (req, res) => {
 	try {
-		const timeEntry = await TimeEntry.findOneAndDelete({
+		const timeEntry = await TimeEntry.findOne({
 			_id: req.params.id,
 			user: req.user.userId,
 		})
@@ -457,9 +542,33 @@ router.delete('/:id', auth, async (req, res) => {
 			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
 		}
 
-		res.json({ message: "Vaqt yozuvi o'chirildi" })
+		const { startTime, endTime, date, description, breakMinutes } = req.body
+
+		// Soatlarni hisoblash
+		const start = new Date(startTime)
+		const end = new Date(endTime)
+		let hours = (end - start) / (1000 * 60 * 60) // millisecondlarni soatga o'tkazish
+
+		// Tanaffus vaqtini ayirish
+		hours -= breakMinutes / 60
+
+		// Yangilangan ma'lumotlarni saqlash
+		timeEntry.startTime = startTime
+		timeEntry.endTime = endTime
+		timeEntry.date = date
+		timeEntry.description = description
+		timeEntry.breakMinutes = breakMinutes
+		timeEntry.hours = parseFloat(hours.toFixed(1))
+
+		await timeEntry.save()
+		const updatedEntry = await timeEntry.populate(
+			'user',
+			'_id username position'
+		)
+		res.json(updatedEntry)
 	} catch (error) {
-		res.status(500).json({ message: "O'chirishda xatolik yuz berdi" })
+		console.error('Error:', error)
+		res.status(500).json({ message: 'Server xatosi' })
 	}
 })
 

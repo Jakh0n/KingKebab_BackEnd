@@ -7,6 +7,11 @@ const timeEntrySchema = new mongoose.Schema(
 			ref: 'User',
 			required: true,
 		},
+		date: {
+			type: Date,
+			required: true,
+			index: true,
+		},
 		startTime: {
 			type: Date,
 			required: true,
@@ -19,10 +24,6 @@ const timeEntrySchema = new mongoose.Schema(
 			type: Number,
 			required: true,
 			default: 0,
-		},
-		date: {
-			type: Date,
-			required: true,
 		},
 		description: {
 			type: String,
@@ -40,6 +41,9 @@ const timeEntrySchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 )
+
+// 3 oydan eski ma'lumotlarni o'chirish uchun TTL indeksi
+timeEntrySchema.index({ date: 1 }, { expireAfterSeconds: 7776000 }) // 90 kun = 7776000 sekund
 
 // Hours ni avtomatik hisoblash
 timeEntrySchema.pre('save', function (next) {
@@ -73,4 +77,6 @@ timeEntrySchema.pre('save', function (next) {
 	next()
 })
 
-module.exports = mongoose.model('TimeEntry', timeEntrySchema)
+const TimeEntry = mongoose.model('TimeEntry', timeEntrySchema)
+
+module.exports = TimeEntry
