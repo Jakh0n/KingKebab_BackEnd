@@ -25,18 +25,20 @@ const timeEntrySchema = new mongoose.Schema(
 			required: true,
 			default: 0,
 		},
-		description: {
-			type: String,
-			required: true,
-		},
 		position: {
 			type: String,
 			required: true,
 			default: 'worker',
 		},
-		breakMinutes: {
-			type: Number,
-			default: 0,
+		overtimeReason: {
+			type: String,
+			enum: ['Busy', 'Last Order', 'Company Request', null],
+			default: null,
+		},
+		responsiblePerson: {
+			type: String,
+			enum: ['Adilcan', 'Boss', ''],
+			default: '',
 		},
 	},
 	{ timestamps: true }
@@ -53,27 +55,23 @@ timeEntrySchema.pre('save', function (next) {
 	// Soatlarni olish
 	const startHour = start.getHours()
 	const endHour = end.getHours()
-
-	let workHours
-	if (endHour < startHour) {
-		// Agar tugash vaqti kichik bo'lsa (masalan 21:00 - 09:00)
-		workHours = 24 - startHour + endHour
-	} else {
-		// Oddiy holat (masalan 09:00 - 17:00)
-		workHours = endHour - startHour
-	}
-
-	// Minutlarni qo'shish
 	const startMinutes = start.getMinutes()
 	const endMinutes = end.getMinutes()
-	const minutesDiff = (endMinutes - startMinutes) / 60
 
-	workHours = workHours + minutesDiff
+	let workHours
+	if (
+		endHour < startHour ||
+		(endHour === startHour && endMinutes < startMinutes)
+	) {
+		// Agar tugash vaqti kichik bo'lsa (masalan 21:00 - 09:00)
+		workHours = 24 - startHour + endHour
+		workHours = workHours + (endMinutes - startMinutes) / 60
+	} else {
+		// Oddiy holat (masalan 09:00 - 17:00)
+		workHours = endHour - startHour + (endMinutes - startMinutes) / 60
+	}
 
-	// Tanaffusni ayirish
-	const breakHrs = this.breakMinutes / 60
-	this.hours = Number((workHours - breakHrs).toFixed(1))
-
+	this.hours = Number(workHours.toFixed(1))
 	next()
 })
 

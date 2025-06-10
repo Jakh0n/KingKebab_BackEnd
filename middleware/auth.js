@@ -9,6 +9,7 @@ const auth = async (req, res, next) => {
 
 		const decoded = jwt.verify(token, process.env.JWT_SECRET)
 		req.user = {
+			_id: decoded.userId,
 			userId: decoded.userId,
 			position: decoded.position,
 			username: decoded.username,
@@ -32,6 +33,7 @@ const adminAuth = async (req, res, next) => {
 		}
 
 		req.user = {
+			_id: decoded.userId,
 			userId: decoded.userId,
 			position: decoded.position,
 			username: decoded.username,

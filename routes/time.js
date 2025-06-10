@@ -23,80 +23,41 @@ const months = [
 // Add time entry
 router.post('/', auth, async (req, res) => {
 	try {
-		const { startTime, endTime, date, description, breakMinutes } = req.body
+		const { startTime, endTime, date, overtimeReason, responsiblePerson } =
+			req.body
 
-		console.log('Received data:', {
+		// Validate input
+		if (!startTime || !endTime || !date) {
+			return res.status(400).json({ message: 'All fields are required' })
+		}
+
+		// Create time entry
+		const timeEntry = new TimeEntry({
+			user: req.user._id,
 			startTime,
 			endTime,
 			date,
-			description,
-			breakMinutes,
-		})
-
-		// Vaqtlarni tekshirish
-		const start = new Date(startTime)
-		const end = new Date(endTime)
-		const workDate = new Date(date)
-
-		if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
-			return res.status(400).json({ message: "Noto'g'ri vaqt formati" })
-		}
-
-		// Soatlarni hisoblash
-		let hours
-		const startHour = start.getHours()
-		const endHour = end.getHours()
-		const startMinutes = start.getMinutes()
-		const endMinutes = end.getMinutes()
-
-		// Agar tugash vaqti boshlash vaqtidan katta bo'lsa
-		if (endHour > startHour) {
-			hours = endHour - startHour + (endMinutes - startMinutes) / 60
-		}
-		// Agar tugash vaqti boshlash vaqtidan kichik bo'lsa (masalan 21:00 - 09:00)
-		else {
-			hours = 24 - startHour + endHour + (endMinutes - startMinutes) / 60
-		}
-
-		// Tanaffusni ayirish
-		const breakHours = (parseInt(breakMinutes) || 0) / 60
-		hours = hours - breakHours
-
-		const timeEntry = new TimeEntry({
-			user: req.user.userId,
-			startTime: start,
-			endTime: end,
-			date: workDate,
-			description,
-			breakMinutes: parseInt(breakMinutes) || 0,
 			position: req.user.position,
-			hours: Number(hours.toFixed(1)),
-		})
-
-		console.log('TimeEntry before save:', {
-			...timeEntry.toObject(),
-			calculatedHours: hours,
-			startHour,
-			endHour,
-			startMinutes,
-			endMinutes,
+			overtimeReason: overtimeReason || null,
+			responsiblePerson: responsiblePerson || '',
 		})
 
 		await timeEntry.save()
-		const savedEntry = await timeEntry.populate('user', '_id username position')
-		console.log('Saved entry:', savedEntry)
 
-		res.status(201).json(savedEntry)
+		// Populate user info
+		await timeEntry.populate('user', 'username position')
+
+		res.status(201).json(timeEntry)
 	} catch (error) {
-		console.error('Error creating time entry:', error)
-		res.status(500).json({ message: "Vaqt qo'shishda xatolik yuz berdi" })
+		console.error('Error adding time entry:', error)
+		res.status(500).json({ message: 'Error adding time entry' })
 	}
 })
 
 // Get user's time entries
 router.get('/my-entries', auth, async (req, res) => {
 	try {
-		const timeEntries = await TimeEntry.find({ user: req.user.userId })
+		const timeEntries = await TimeEntry.find({ user: req.user._id })
 			.populate({
 				path: 'user',
 				select: '_id username position',
@@ -220,17 +181,24 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 							text-align: center;
 							flex: 1;
 						}
-						.description {
-							color: #666;
-							font-style: italic;
+						.overtime {
+							color: #f0ad4e;
+							font-weight: bold;
 							margin-top: 5px;
+						}
+						.responsible {
+							color: #5bc0de;
+							font-style: italic;
+							margin-top: 2px;
 						}
 					</style>
 				</head>
 				<body>
 					<div class="header">
-						<h1>${timeEntries[0].user.username}</h1>
-						<p>Vaqt hisoboti - ${months[parseInt(month) - 1]} ${year}</p>
+						<h1>Vaqt hisoboti - ${months[parseInt(month) - 1]} ${year}</h1>
+						<p>${timeEntries[0].user.username} - ${
+			timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
+		}</p>
 					</div>
 					
 					<div class="info">
@@ -287,12 +255,19 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 					<div class="entry-hours">
 						${entry.hours} soat
 					</div>
-					<div class="entry-time">
-						Tanaffus: ${entry.breakMinutes} daqiqa
-					</div>
 					${
-						entry.description
-							? `<div class="description">${entry.description}</div>`
+						entry.hours > 12 && entry.overtimeReason
+							? `
+								<div class="overtime">
+									Qo'shimcha ish: ${entry.overtimeReason}
+								</div>
+								${
+									entry.overtimeReason === 'Company Request' &&
+									entry.responsiblePerson
+										? `<div class="responsible">Mas'ul: ${entry.responsiblePerson}</div>`
+										: ''
+								}
+							`
 							: ''
 					}
 				</div>
@@ -305,42 +280,36 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 			</html>
 		`
 
-		// PDF options
-		const options = {
-			format: 'A4',
-			border: {
-				top: '20px',
-				right: '20px',
-				bottom: '20px',
-				left: '20px',
-			},
-			header: {
-				height: '15mm',
-			},
-			footer: {
-				height: '15mm',
-			},
-		}
-
 		// Generate PDF
-		pdf.create(htmlContent, options).toBuffer((err, buffer) => {
-			if (err) {
-				console.error('Error creating PDF:', err)
-				return res.status(500).json({ message: 'PDF yaratishda xatolik' })
-			}
+		pdf
+			.create(htmlContent, {
+				format: 'A4',
+				border: '10mm',
+				header: {
+					height: '10mm',
+				},
+				footer: {
+					height: '10mm',
+				},
+			})
+			.toBuffer((err, buffer) => {
+				if (err) {
+					console.error('PDF generation error:', err)
+					return res.status(500).json({ message: 'PDF generation failed' })
+				}
 
-			res.setHeader('Content-Type', 'application/pdf')
-			res.setHeader(
-				'Content-Disposition',
-				`attachment; filename=${timeEntries[0].user.username}_${
-					months[parseInt(month) - 1]
-				}_${year}.pdf`
-			)
-			res.send(buffer)
-		})
+				res.setHeader('Content-Type', 'application/pdf')
+				res.setHeader(
+					'Content-Disposition',
+					`attachment; filename=time-report-${
+						months[parseInt(month) - 1]
+					}-${year}.pdf`
+				)
+				res.send(buffer)
+			})
 	} catch (error) {
 		console.error('Error generating PDF:', error)
-		res.status(500).json({ message: 'PDF yaratishda xatolik' })
+		res.status(500).json({ message: 'Error generating PDF' })
 	}
 })
 
@@ -348,7 +317,7 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 	try {
 		const { month, year } = req.params
-		const userId = req.user.userId
+		const userId = req.user._id
 
 		const timeEntries = await TimeEntry.find({
 			user: userId,
@@ -418,8 +387,19 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 					<p>Sana: ${date}</p>
 					<p>Vaqt: ${startTime} - ${endTime}</p>
 					<p>Ishlagan soat: ${entry.hours} soat</p>
-					<p>Tanaffus: ${entry.breakMinutes} daqiqa</p>
-					${entry.description ? `<p>Izoh: ${entry.description}</p>` : ''}
+					${
+						entry.hours > 12 && entry.overtimeReason
+							? `
+								<p class="overtime">Qo'shimcha ish: ${entry.overtimeReason}</p>
+								${
+									entry.overtimeReason === 'Company Request' &&
+									entry.responsiblePerson
+										? `<p class="responsible">Mas'ul: ${entry.responsiblePerson}</p>`
+										: ''
+								}
+							`
+							: ''
+					}
 				</div>
 			`
 		})
@@ -476,7 +456,7 @@ router.get('/daily/:date', auth, async (req, res) => {
 		const endOfDay = new Date(requestedDate.setHours(23, 59, 59, 999))
 
 		const entries = await TimeEntry.find({
-			user: req.user.userId,
+			user: req.user._id,
 			date: {
 				$gte: startOfDay,
 				$lte: endOfDay,
@@ -497,7 +477,7 @@ router.get('/weekly/:startDate', auth, async (req, res) => {
 		endDate.setDate(endDate.getDate() + 7)
 
 		const entries = await TimeEntry.find({
-			user: req.user.userId,
+			user: req.user._id,
 			date: {
 				$gte: startDate,
 				$lt: endDate,
@@ -515,7 +495,7 @@ router.delete('/:id', auth, async (req, res) => {
 	try {
 		const timeEntry = await TimeEntry.findOne({
 			_id: req.params.id,
-			user: req.user.userId,
+			user: req.user._id,
 		})
 
 		if (!timeEntry) {
@@ -533,42 +513,40 @@ router.delete('/:id', auth, async (req, res) => {
 // Vaqt yozuvini yangilash
 router.put('/:id', auth, async (req, res) => {
 	try {
-		const timeEntry = await TimeEntry.findOne({
-			_id: req.params.id,
-			user: req.user.userId,
-		})
+		const { startTime, endTime, date, overtimeReason, responsiblePerson } =
+			req.body
 
-		if (!timeEntry) {
-			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
+		// Validate input
+		if (!startTime || !endTime || !date) {
+			return res.status(400).json({ message: 'All fields are required' })
 		}
 
-		const { startTime, endTime, date, description, breakMinutes } = req.body
+		const timeEntry = await TimeEntry.findById(req.params.id)
+		if (!timeEntry) {
+			return res.status(404).json({ message: 'Time entry not found' })
+		}
 
-		// Soatlarni hisoblash
-		const start = new Date(startTime)
-		const end = new Date(endTime)
-		let hours = (end - start) / (1000 * 60 * 60) // millisecondlarni soatga o'tkazish
+		// Check ownership
+		if (timeEntry.user.toString() !== req.user._id.toString()) {
+			return res.status(403).json({ message: 'Not authorized' })
+		}
 
-		// Tanaffus vaqtini ayirish
-		hours -= breakMinutes / 60
-
-		// Yangilangan ma'lumotlarni saqlash
+		// Update fields
 		timeEntry.startTime = startTime
 		timeEntry.endTime = endTime
 		timeEntry.date = date
-		timeEntry.description = description
-		timeEntry.breakMinutes = breakMinutes
-		timeEntry.hours = parseFloat(hours.toFixed(1))
+		timeEntry.overtimeReason = overtimeReason || null
+		timeEntry.responsiblePerson = responsiblePerson || ''
 
 		await timeEntry.save()
-		const updatedEntry = await timeEntry.populate(
-			'user',
-			'_id username position'
-		)
-		res.json(updatedEntry)
+
+		// Populate user info
+		await timeEntry.populate('user', 'username position')
+
+		res.json(timeEntry)
 	} catch (error) {
-		console.error('Error:', error)
-		res.status(500).json({ message: 'Server xatosi' })
+		console.error('Error updating time entry:', error)
+		res.status(500).json({ message: 'Error updating time entry' })
 	}
 })
 
