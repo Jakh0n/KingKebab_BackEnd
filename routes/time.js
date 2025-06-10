@@ -1,23 +1,23 @@
 const express = require('express')
 const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
-const pdf = require('html-pdf')
+const PDFDocument = require('pdfkit')
 const router = express.Router()
 
-// Oylar ro'yxati
+// Months list in English
 const months = [
-	'Yanvar',
-	'Fevral',
-	'Mart',
+	'January',
+	'February',
+	'March',
 	'April',
 	'May',
-	'Iyun',
-	'Iyul',
-	'Avgust',
-	'Sentabr',
-	'Oktabr',
-	'Noyabr',
-	'Dekabr',
+	'June',
+	'July',
+	'August',
+	'September',
+	'October',
+	'November',
+	'December',
 ]
 
 // Add time entry
@@ -109,204 +109,172 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 			return res.status(404).json({ message: 'No entries found' })
 		}
 
-		// Jami statistika
+		// Total statistics
 		const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
 		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
 
-		// Create HTML content with improved design
-		let htmlContent = `
-			<html>
-				<head>
-					<style>
-						body { 
-							font-family: Arial, sans-serif; 
-							padding: 20px;
-							color: #333;
-						}
-						.header { 
-							text-align: center; 
-							margin-bottom: 30px;
-							border-bottom: 2px solid #4a90e2;
-							padding-bottom: 20px;
-						}
-						.info { 
-							margin-bottom: 30px;
-							display: flex;
-							justify-content: space-between;
-							background-color: #f8f9fa;
-							padding: 15px;
-							border-radius: 8px;
-						}
-						.info-item {
-							flex: 1;
-							text-align: center;
-						}
-						.entries-grid {
-							display: grid;
-							grid-template-columns: repeat(3, 1fr);
-							gap: 15px;
-							margin-top: 20px;
-						}
-						.entry {
-							background-color: #fff;
-							border: 1px solid #e0e0e0;
-							border-radius: 8px;
-							padding: 15px;
-							box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-						}
-						.entry-date {
-							font-weight: bold;
-							color: #4a90e2;
-							margin-bottom: 10px;
-						}
-						.entry-time {
-							color: #666;
-							margin-bottom: 5px;
-						}
-						.entry-hours {
-							font-weight: bold;
-							color: #28a745;
-						}
-						.total {
-							margin-top: 30px;
-							background-color: #4a90e2;
-							color: white;
-							padding: 20px;
-							border-radius: 8px;
-							display: flex;
-							justify-content: space-between;
-						}
-						.total-item {
-							text-align: center;
-							flex: 1;
-						}
-						.overtime {
-							color: #f0ad4e;
-							font-weight: bold;
-							margin-top: 5px;
-						}
-						.responsible {
-							color: #5bc0de;
-							font-style: italic;
-							margin-top: 2px;
-						}
-					</style>
-				</head>
-				<body>
-					<div class="header">
-						<h1>Vaqt hisoboti - ${months[parseInt(month) - 1]} ${year}</h1>
-						<p>${timeEntries[0].user.username} - ${
-			timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
-		}</p>
-					</div>
-					
-					<div class="info">
-						<div class="info-item">
-							<h3>Lavozim</h3>
-							<p>${timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'}</p>
-						</div>
-						<div class="info-item">
-							<h3>Jami kunlar</h3>
-							<p>${timeEntries.length} kun</p>
-						</div>
-						<div class="info-item">
-							<h3>Jami soatlar</h3>
-							<p>${totalHours.toFixed(1)} soat</p>
-						</div>
-					</div>
-
-					<div class="total">
-						<div class="total-item">
-							<h3>Oddiy kunlar</h3>
-							<p>${regularDays} kun</p>
-						</div>
-						<div class="total-item">
-							<h3>Qo'shimcha kunlar</h3>
-							<p>${overtimeDays} kun</p>
-						</div>
-						<div class="total-item">
-							<h3>O'rtacha soat</h3>
-							<p>${(totalHours / timeEntries.length).toFixed(1)} soat</p>
-						</div>
-					</div>
-
-					<h2 style="margin-top: 30px;">Kunlik hisobot:</h2>
-					<div class="entries-grid">
-		`
-
-		timeEntries.forEach(entry => {
-			const date = new Date(entry.date).toLocaleDateString('uz-UZ')
-			const startTime = new Date(entry.startTime).toLocaleTimeString('uz-UZ', {
-				hour: '2-digit',
-				minute: '2-digit',
-			})
-			const endTime = new Date(entry.endTime).toLocaleTimeString('uz-UZ', {
-				hour: '2-digit',
-				minute: '2-digit',
-			})
-
-			htmlContent += `
-				<div class="entry">
-					<div class="entry-date">${date}</div>
-					<div class="entry-time">
-						${startTime} - ${endTime}
-					</div>
-					<div class="entry-hours">
-						${entry.hours} soat
-					</div>
-					${
-						entry.hours > 12 && entry.overtimeReason
-							? `
-								<div class="overtime">
-									Qo'shimcha ish: ${entry.overtimeReason}
-								</div>
-								${
-									entry.overtimeReason === 'Company Request' &&
-									entry.responsiblePerson
-										? `<div class="responsible">Mas'ul: ${entry.responsiblePerson}</div>`
-										: ''
-								}
-							`
-							: ''
-					}
-				</div>
-			`
+		// Create PDF document
+		const doc = new PDFDocument({
+			size: 'A4',
+			margin: 50,
+			info: {
+				Title: `Time Report - ${months[parseInt(month) - 1]} ${year}`,
+				Author: 'King Kebab',
+			},
 		})
 
-		htmlContent += `
-					</div>
-				</body>
-			</html>
-		`
+		// Set response headers
+		res.setHeader('Content-Type', 'application/pdf')
+		res.setHeader(
+			'Content-Disposition',
+			`attachment; filename=time-report-${
+				months[parseInt(month) - 1]
+			}-${year}.pdf`
+		)
 
-		// Generate PDF
-		pdf
-			.create(htmlContent, {
-				format: 'A4',
-				border: '10mm',
-				header: {
-					height: '10mm',
-				},
-				footer: {
-					height: '10mm',
-				},
+		// Pipe the PDF to the response
+		doc.pipe(res)
+
+		// Add header
+		doc.fontSize(24).text('King Kebab', { align: 'center' }).moveDown(0.5)
+
+		doc
+			.fontSize(18)
+			.text(`Time Report - ${months[parseInt(month) - 1]} ${year}`, {
+				align: 'center',
 			})
-			.toBuffer((err, buffer) => {
-				if (err) {
-					console.error('PDF generation error:', err)
-					return res.status(500).json({ message: 'PDF generation failed' })
+			.moveDown(0.5)
+
+		doc
+			.fontSize(14)
+			.text(
+				`${timeEntries[0].user.username} - ${
+					timeEntries[0].user.position === 'worker' ? 'Worker' : 'Rider'
+				}`,
+				{ align: 'center' }
+			)
+			.moveDown(1)
+
+		// Add summary box
+		const boxTop = doc.y
+		doc
+			.rect(50, boxTop, 495, 100)
+			.fillAndStroke('#f6f6f6', '#e0e0e0')
+			.moveDown(0.5)
+
+		// Summary information
+		doc.fill('#333333').fontSize(12)
+
+		// First row
+		doc.text('Position:', 70, boxTop + 20)
+		doc.text(
+			timeEntries[0].user.position === 'worker' ? 'Worker' : 'Rider',
+			200,
+			boxTop + 20
+		)
+
+		doc.text('Total Days:', 300, boxTop + 20)
+		doc.text(`${timeEntries.length} days`, 430, boxTop + 20)
+
+		// Second row
+		doc.text('Regular Days:', 70, boxTop + 45)
+		doc.text(`${regularDays} days`, 200, boxTop + 45)
+
+		doc.text('Overtime Days:', 300, boxTop + 45)
+		doc.text(`${overtimeDays} days`, 430, boxTop + 45)
+
+		// Third row
+		doc.text('Total Hours:', 70, boxTop + 70)
+		doc.text(`${totalHours.toFixed(1)} hours`, 200, boxTop + 70)
+
+		doc.text('Average Hours:', 300, boxTop + 70)
+		doc.text(
+			`${(totalHours / timeEntries.length).toFixed(1)} hours`,
+			430,
+			boxTop + 70
+		)
+
+		// Move down after the box
+		doc.moveDown(2)
+
+		// Add entries table
+		doc.fontSize(16).text('Daily Report:', { underline: true }).moveDown(1)
+
+		// Table headers
+		const tableTop = doc.y
+		doc
+			.fontSize(12)
+			.rect(50, tableTop, 495, 30)
+			.fillAndStroke('#4a90e2', '#2171c7')
+
+		doc
+			.fill('#ffffff')
+			.text('Date', 70, tableTop + 10)
+			.text('Time', 200, tableTop + 10)
+			.text('Hours', 350, tableTop + 10)
+			.text('Status', 430, tableTop + 10)
+
+		// Table rows
+		let rowTop = tableTop + 30
+		timeEntries.forEach((entry, index) => {
+			const isEven = index % 2 === 0
+			const date = new Date(entry.date).toLocaleDateString('en-US', {
+				year: 'numeric',
+				month: 'short',
+				day: 'numeric',
+			})
+			const startTime = new Date(entry.startTime).toLocaleTimeString('en-US', {
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: true,
+			})
+			const endTime = new Date(entry.endTime).toLocaleTimeString('en-US', {
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: true,
+			})
+
+			// Add new page if needed
+			if (rowTop > doc.page.height - 100) {
+				doc.addPage()
+				rowTop = 50
+			}
+
+			// Row background
+			doc
+				.rect(50, rowTop, 495, 50)
+				.fillAndStroke(isEven ? '#f8f9fa' : '#ffffff')
+				.fill('#333333')
+
+			// Row content
+			doc.text(date, 70, rowTop + 10)
+			doc.text(`${startTime} - ${endTime}`, 200, rowTop + 10)
+			doc.text(`${entry.hours} hours`, 350, rowTop + 10)
+			doc.text(entry.hours > 12 ? 'Overtime' : 'Regular', 430, rowTop + 10)
+
+			// Add overtime reason if exists
+			if (entry.hours > 12 && entry.overtimeReason) {
+				doc
+					.fontSize(10)
+					.fill('#f0ad4e')
+					.text(`Reason: ${entry.overtimeReason}`, 70, rowTop + 30)
+
+				if (
+					entry.overtimeReason === 'Company Request' &&
+					entry.responsiblePerson
+				) {
+					doc
+						.fill('#5bc0de')
+						.text(`Responsible: ${entry.responsiblePerson}`, 350, rowTop + 30)
 				}
+			}
 
-				res.setHeader('Content-Type', 'application/pdf')
-				res.setHeader(
-					'Content-Disposition',
-					`attachment; filename=time-report-${
-						months[parseInt(month) - 1]
-					}-${year}.pdf`
-				)
-				res.send(buffer)
-			})
+			rowTop += 50
+		})
+
+		// Finalize the PDF
+		doc.end()
 	} catch (error) {
 		console.error('Error generating PDF:', error)
 		res.status(500).json({ message: 'Error generating PDF' })
@@ -335,116 +303,175 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 			return res.status(404).json({ message: 'No entries found' })
 		}
 
-		// Jami statistika
+		// Total statistics
 		const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0)
 		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
 		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
 
-		// Create HTML content
-		let htmlContent = `
-			<html>
-				<head>
-					<style>
-						body { font-family: Arial, sans-serif; padding: 20px; }
-						.header { text-align: center; margin-bottom: 20px; }
-						.info { margin-bottom: 20px; }
-						.entry { margin-bottom: 15px; padding: 10px; border-bottom: 1px solid #eee; }
-						.total { margin-top: 20px; font-weight: bold; }
-					</style>
-				</head>
-				<body>
-					<div class="header">
-						<h1>${timeEntries[0].user.username} - Vaqt hisoboti</h1>
-					</div>
-					<div class="info">
-						<p>Lavozim: ${
-							timeEntries[0].user.position === 'worker' ? 'Ishchi' : 'Rider'
-						}</p>
-						<p>Oy: ${months[parseInt(month) - 1]}</p>
-						<p>Yil: ${year}</p>
-					</div>
-					<div class="total">
-						<p>Jami ishlagan soat: ${totalHours.toFixed(1)} soat</p>
-						<p>Oddiy kunlar: ${regularDays} kun</p>
-						<p>Qo'shimcha kunlar: ${overtimeDays} kun</p>
-					</div>
-					<h2>Kunlik hisobot:</h2>
-				`
-
-		timeEntries.forEach(entry => {
-			const date = new Date(entry.date).toLocaleDateString('uz-UZ')
-			const startTime = new Date(entry.startTime).toLocaleTimeString('uz-UZ', {
-				hour: '2-digit',
-				minute: '2-digit',
-			})
-			const endTime = new Date(entry.endTime).toLocaleTimeString('uz-UZ', {
-				hour: '2-digit',
-				minute: '2-digit',
-			})
-
-			htmlContent += `
-				<div class="entry">
-					<p>Sana: ${date}</p>
-					<p>Vaqt: ${startTime} - ${endTime}</p>
-					<p>Ishlagan soat: ${entry.hours} soat</p>
-					${
-						entry.hours > 12 && entry.overtimeReason
-							? `
-								<p class="overtime">Qo'shimcha ish: ${entry.overtimeReason}</p>
-								${
-									entry.overtimeReason === 'Company Request' &&
-									entry.responsiblePerson
-										? `<p class="responsible">Mas'ul: ${entry.responsiblePerson}</p>`
-										: ''
-								}
-							`
-							: ''
-					}
-				</div>
-			`
+		// Create PDF document
+		const doc = new PDFDocument({
+			size: 'A4',
+			margin: 50,
+			info: {
+				Title: `Time Report - ${months[parseInt(month) - 1]} ${year}`,
+				Author: 'King Kebab',
+			},
 		})
 
-		htmlContent += `
-				</body>
-			</html>
-		`
+		// Set response headers
+		res.setHeader('Content-Type', 'application/pdf')
+		res.setHeader(
+			'Content-Disposition',
+			`attachment; filename=${timeEntries[0].user.username}-${
+				months[parseInt(month) - 1]
+			}-${year}.pdf`
+		)
 
-		// PDF options
-		const options = {
-			format: 'A4',
-			border: {
-				top: '20px',
-				right: '20px',
-				bottom: '20px',
-				left: '20px',
-			},
-		}
+		// Pipe the PDF to the response
+		doc.pipe(res)
 
-		// Generate PDF
-		pdf.create(htmlContent, options).toBuffer((err, buffer) => {
-			if (err) {
-				console.error('Error creating PDF:', err)
-				return res.status(500).json({
-					message: 'Error generating PDF',
-					error: err.message,
-				})
+		// Add header
+		doc.fontSize(24).text('King Kebab', { align: 'center' }).moveDown(0.5)
+
+		doc
+			.fontSize(18)
+			.text(`Time Report - ${months[parseInt(month) - 1]} ${year}`, {
+				align: 'center',
+			})
+			.moveDown(0.5)
+
+		doc
+			.fontSize(14)
+			.text(
+				`${timeEntries[0].user.username} - ${
+					timeEntries[0].user.position === 'worker' ? 'Worker' : 'Rider'
+				}`,
+				{ align: 'center' }
+			)
+			.moveDown(1)
+
+		// Add summary box
+		const boxTop = doc.y
+		doc
+			.rect(50, boxTop, 495, 100)
+			.fillAndStroke('#f6f6f6', '#e0e0e0')
+			.moveDown(0.5)
+
+		// Summary information
+		doc.fill('#333333').fontSize(12)
+
+		// First row
+		doc.text('Position:', 70, boxTop + 20)
+		doc.text(
+			timeEntries[0].user.position === 'worker' ? 'Worker' : 'Rider',
+			200,
+			boxTop + 20
+		)
+
+		doc.text('Total Days:', 300, boxTop + 20)
+		doc.text(`${timeEntries.length} days`, 430, boxTop + 20)
+
+		// Second row
+		doc.text('Regular Days:', 70, boxTop + 45)
+		doc.text(`${regularDays} days`, 200, boxTop + 45)
+
+		doc.text('Overtime Days:', 300, boxTop + 45)
+		doc.text(`${overtimeDays} days`, 430, boxTop + 45)
+
+		// Third row
+		doc.text('Total Hours:', 70, boxTop + 70)
+		doc.text(`${totalHours.toFixed(1)} hours`, 200, boxTop + 70)
+
+		doc.text('Average Hours:', 300, boxTop + 70)
+		doc.text(
+			`${(totalHours / timeEntries.length).toFixed(1)} hours`,
+			430,
+			boxTop + 70
+		)
+
+		// Move down after the box
+		doc.moveDown(2)
+
+		// Add entries table
+		doc.fontSize(16).text('Daily Report:', { underline: true }).moveDown(1)
+
+		// Table headers
+		const tableTop = doc.y
+		doc
+			.fontSize(12)
+			.rect(50, tableTop, 495, 30)
+			.fillAndStroke('#4a90e2', '#2171c7')
+
+		doc
+			.fill('#ffffff')
+			.text('Date', 70, tableTop + 10)
+			.text('Time', 200, tableTop + 10)
+			.text('Hours', 350, tableTop + 10)
+			.text('Status', 430, tableTop + 10)
+
+		// Table rows
+		let rowTop = tableTop + 30
+		timeEntries.forEach((entry, index) => {
+			const isEven = index % 2 === 0
+			const date = new Date(entry.date).toLocaleDateString('en-US', {
+				year: 'numeric',
+				month: 'short',
+				day: 'numeric',
+			})
+			const startTime = new Date(entry.startTime).toLocaleTimeString('en-US', {
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: true,
+			})
+			const endTime = new Date(entry.endTime).toLocaleTimeString('en-US', {
+				hour: '2-digit',
+				minute: '2-digit',
+				hour12: true,
+			})
+
+			// Add new page if needed
+			if (rowTop > doc.page.height - 100) {
+				doc.addPage()
+				rowTop = 50
 			}
 
-			res.setHeader('Content-Type', 'application/pdf')
-			res.setHeader(
-				'Content-Disposition',
-				`attachment; filename="${timeEntries[0].user.username}-${
-					months[parseInt(month) - 1]
-				}-${year}.pdf"`
-			)
-			res.send(buffer)
+			// Row background
+			doc
+				.rect(50, rowTop, 495, 50)
+				.fillAndStroke(isEven ? '#f8f9fa' : '#ffffff')
+				.fill('#333333')
+
+			// Row content
+			doc.text(date, 70, rowTop + 10)
+			doc.text(`${startTime} - ${endTime}`, 200, rowTop + 10)
+			doc.text(`${entry.hours} hours`, 350, rowTop + 10)
+			doc.text(entry.hours > 12 ? 'Overtime' : 'Regular', 430, rowTop + 10)
+
+			// Add overtime reason if exists
+			if (entry.hours > 12 && entry.overtimeReason) {
+				doc
+					.fontSize(10)
+					.fill('#f0ad4e')
+					.text(`Reason: ${entry.overtimeReason}`, 70, rowTop + 30)
+
+				if (
+					entry.overtimeReason === 'Company Request' &&
+					entry.responsiblePerson
+				) {
+					doc
+						.fill('#5bc0de')
+						.text(`Responsible: ${entry.responsiblePerson}`, 350, rowTop + 30)
+				}
+			}
+
+			rowTop += 50
 		})
+
+		// Finalize the PDF
+		doc.end()
 	} catch (error) {
 		console.error('Error generating PDF:', error)
-		res.status(500).json({
-			message: 'Error generating PDF',
-			error: error.message,
-		})
+		res.status(500).json({ message: 'Error generating PDF' })
 	}
 })
 

@@ -1,9 +1,8 @@
 FROM node:18-slim
 
-# Install dependencies for html-pdf
+# Install dependencies for Puppeteer
 RUN apt-get update && apt-get install -y \
-    libfontconfig \
-    libfreetype6 \
+    chromium \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -24,8 +23,11 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libxshmfence1 \
     xdg-utils \
-    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Set environment variable to skip Chromium download during npm install
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
