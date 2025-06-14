@@ -2,6 +2,7 @@ const express = require('express')
 const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
 const PDFDocument = require('pdfkit')
+const fetch = require('node-fetch')
 const router = express.Router()
 
 // Months list in English
@@ -19,6 +20,71 @@ const months = [
 	'November',
 	'December',
 ]
+
+// Telegram bot uchun funksiya
+async function sendTelegramNotification(timeEntry) {
+	try {
+		const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+		const CHAT_ID = process.env.TELEGRAM_CHAT_ID
+
+		if (!BOT_TOKEN || !CHAT_ID) {
+			console.warn('Telegram bot token or chat ID not configured')
+			return
+		}
+
+		// Vaqtlarni formatlash
+		const startTime = new Date(timeEntry.startTime)
+		const endTime = new Date(timeEntry.endTime)
+
+		const message = `
+🕒 Yangi vaqt yozuvi qo'shildi:
+👤 Foydalanuvchi: ${timeEntry.user.username}
+📅 Sana: ${new Date(timeEntry.date).toLocaleDateString()}
+⏰ Boshlash vaqti: ${startTime.toLocaleTimeString('en-US', {
+			hour: '2-digit',
+			hour12: true,
+		})}
+⏰ Tugash vaqti: ${endTime.toLocaleTimeString('en-US', {
+			hour: '2-digit',
+			hour12: true,
+		})}
+⏱️ Jami soatlar: ${timeEntry.hours}
+${
+	timeEntry.overtimeReason
+		? `⚠️ Qo'shimcha ish sababi: ${timeEntry.overtimeReason}`
+		: ''
+}
+${
+	timeEntry.responsiblePerson
+		? `👥 Mas'ul shaxs: ${timeEntry.responsiblePerson}`
+		: ''
+}
+		`
+
+		const response = await fetch(
+			`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					chat_id: CHAT_ID,
+					text: message,
+					parse_mode: 'HTML',
+				}),
+			}
+		)
+
+		if (!response.ok) {
+			const errorData = await response.json()
+			console.error('Telegram API error:', errorData)
+			throw new Error('Failed to send Telegram notification')
+		}
+	} catch (error) {
+		console.error('Error sending Telegram notification:', error)
+	}
+}
 
 // Add time entry
 router.post('/', auth, async (req, res) => {
@@ -46,6 +112,9 @@ router.post('/', auth, async (req, res) => {
 
 		// Populate user info
 		await timeEntry.populate('user', 'username position')
+
+		// Send Telegram notification
+		await sendTelegramNotification(timeEntry)
 
 		res.status(201).json(timeEntry)
 	} catch (error) {
