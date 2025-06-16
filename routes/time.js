@@ -3,6 +3,7 @@ const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
 const PDFDocument = require('pdfkit')
 const ExcelJS = require('exceljs')
+const { sendTelegramNotification } = require('../utils/telegram')
 const router = express.Router()
 
 // Months list in English
@@ -37,12 +38,43 @@ router.post('/', auth, async (req, res) => {
 			return res.status(401).json({ message: 'User not authenticated' })
 		}
 
+		// Validate date format
+		const startDate = new Date(startTime)
+		const endDate = new Date(endTime)
+		const entryDate = new Date(date)
+
+		if (
+			isNaN(startDate.getTime()) ||
+			isNaN(endDate.getTime()) ||
+			isNaN(entryDate.getTime())
+		) {
+			return res.status(400).json({ message: 'Invalid date format' })
+		}
+
+		// Check for overlapping entries
+		const existingEntry = await TimeEntry.findOne({
+			user: req.user._id,
+			date: entryDate,
+			$or: [
+				{
+					startTime: { $lt: endDate },
+					endTime: { $gt: startDate },
+				},
+			],
+		})
+
+		if (existingEntry) {
+			return res
+				.status(400)
+				.json({ message: 'Time entry overlaps with existing entry' })
+		}
+
 		// Create time entry
 		const timeEntry = new TimeEntry({
 			user: req.user._id,
-			startTime,
-			endTime,
-			date,
+			startTime: startDate,
+			endTime: endDate,
+			date: entryDate,
 			position: req.user.position,
 			overtimeReason: overtimeReason || null,
 			responsiblePerson: responsiblePerson || '',
@@ -53,12 +85,38 @@ router.post('/', auth, async (req, res) => {
 		// Populate user info
 		await timeEntry.populate('user', 'username position')
 
+		// Send Telegram notification
+		const message = `
+🆕 <b>Yangi vaqt qo'shildi</b>
+
+👤 Foydalanuvchi: ${timeEntry.user.username}
+📅 Sana: ${new Date(timeEntry.date).toLocaleDateString()}
+⏰ Vaqt: ${new Date(timeEntry.startTime).toLocaleTimeString()} - ${new Date(
+			timeEntry.endTime
+		).toLocaleTimeString()}
+⏱️ Soatlar: ${timeEntry.hours}
+${
+	timeEntry.overtimeReason
+		? `\n⚠️ Qo'shimcha ish sababi: ${timeEntry.overtimeReason}`
+		: ''
+}
+${
+	timeEntry.responsiblePerson
+		? `\n👥 Mas'ul shaxs: ${timeEntry.responsiblePerson}`
+		: ''
+}
+		`.trim()
+
+		await sendTelegramNotification(message)
+
 		res.status(201).json(timeEntry)
 	} catch (error) {
 		console.error('Error adding time entry:', error)
-		res
-			.status(500)
-			.json({ message: 'Error adding time entry', error: error.message })
+		res.status(500).json({
+			message: 'Error adding time entry',
+			error: error.message,
+			stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+		})
 	}
 })
 
@@ -72,10 +130,24 @@ router.get('/my-entries', auth, async (req, res) => {
 				model: 'User',
 			})
 			.sort({ date: -1 })
-		res.json(timeEntries)
+			.lean()
+
+		// Format dates for frontend
+		const formattedEntries = timeEntries.map(entry => ({
+			...entry,
+			startTime: new Date(entry.startTime).toISOString(),
+			endTime: new Date(entry.endTime).toISOString(),
+			date: new Date(entry.date).toISOString(),
+		}))
+
+		res.json(formattedEntries)
 	} catch (error) {
 		console.error('Error fetching time entries:', error)
-		res.status(500).json({ message: 'Vaqtlarni yuklashda xatolik' })
+		res.status(500).json({
+			message: 'Vaqtlarni yuklashda xatolik',
+			error: error.message,
+			stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+		})
 	}
 })
 
