@@ -32,6 +32,11 @@ router.post('/', auth, async (req, res) => {
 			return res.status(400).json({ message: 'All fields are required' })
 		}
 
+		// Validate user
+		if (!req.user || !req.user._id) {
+			return res.status(401).json({ message: 'User not authenticated' })
+		}
+
 		// Create time entry
 		const timeEntry = new TimeEntry({
 			user: req.user._id,
@@ -51,7 +56,9 @@ router.post('/', auth, async (req, res) => {
 		res.status(201).json(timeEntry)
 	} catch (error) {
 		console.error('Error adding time entry:', error)
-		res.status(500).json({ message: 'Error adding time entry' })
+		res
+			.status(500)
+			.json({ message: 'Error adding time entry', error: error.message })
 	}
 })
 
