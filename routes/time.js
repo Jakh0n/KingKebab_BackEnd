@@ -23,8 +23,14 @@ const months = [
 // Add time entry
 router.post('/', auth, async (req, res) => {
 	try {
-		const { startTime, endTime, date, overtimeReason, responsiblePerson } =
-			req.body
+		const {
+			startTime,
+			endTime,
+			date,
+			overtimeReason,
+			responsiblePerson,
+			employeeId,
+		} = req.body
 
 		// Validate input
 		if (!startTime || !endTime || !date) {
@@ -38,6 +44,7 @@ router.post('/', auth, async (req, res) => {
 			endTime,
 			date,
 			position: req.user.position,
+			employeeId: employeeId || req.user.employeeId,
 			overtimeReason: overtimeReason || null,
 			responsiblePerson: responsiblePerson || '',
 		})
@@ -45,7 +52,7 @@ router.post('/', auth, async (req, res) => {
 		await timeEntry.save()
 
 		// Populate user info
-		await timeEntry.populate('user', 'username position')
+		await timeEntry.populate('user', 'username position employeeId')
 
 		res.status(201).json(timeEntry)
 	} catch (error) {
@@ -77,7 +84,7 @@ router.get('/all', adminAuth, async (req, res) => {
 		const timeEntries = await TimeEntry.find()
 			.populate({
 				path: 'user',
-				select: '_id username position',
+				select: '_id username position employeeId',
 			})
 			.sort({ date: -1 })
 

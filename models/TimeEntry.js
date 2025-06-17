@@ -30,6 +30,10 @@ const timeEntrySchema = new mongoose.Schema(
 			required: true,
 			default: 'worker',
 		},
+		employeeId: {
+			type: String,
+			required: false,
+		},
 		overtimeReason: {
 			type: String,
 			enum: ['Busy', 'Last Order', 'Company Request', null],
