@@ -12,6 +12,11 @@ const userSchema = new mongoose.Schema(
 			type: String,
 			required: true,
 		},
+		employeeId: {
+			type: String,
+			required: true,
+			unique: true,
+		},
 		position: {
 			type: String,
 			required: true,
@@ -24,12 +29,6 @@ const userSchema = new mongoose.Schema(
 	},
 	{ timestamps: true }
 )
-
-userSchema.pre('save', async function (next) {
-	if (!this.isModified('password')) return next()
-	this.password = await bcrypt.hash(this.password, 10)
-	next()
-})
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
 	return await bcrypt.compare(candidatePassword, this.password)

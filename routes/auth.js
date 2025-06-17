@@ -47,26 +47,48 @@ router.post('/create-admin', async (req, res) => {
 // Register
 router.post('/register', async (req, res) => {
 	try {
-		const { username, password, position } = req.body
+		const { username, password, position, employeeId } = req.body
 
-		const existingUser = await User.findOne({ username })
-		if (existingUser) {
-			return res.status(400).json({ message: 'Username already exists' })
+		// Validate input
+		if (!username || !password || !position || !employeeId) {
+			return res.status(400).json({ message: "Barcha maydonlarni to'ldiring" })
 		}
 
+		// Check if username exists
+		const existingUsername = await User.findOne({ username })
+		if (existingUsername) {
+			return res.status(400).json({ message: 'Bu username allaqachon mavjud' })
+		}
+
+		// Check if employeeId exists
+		const existingEmployeeId = await User.findOne({ employeeId })
+		if (existingEmployeeId) {
+			return res
+				.status(400)
+				.json({ message: 'Bu employee ID allaqachon mavjud' })
+		}
+
+		// Hash password
+		const hashedPassword = await bcrypt.hash(password, 10)
+
+		// Create new user
 		const user = new User({
 			username,
-			password,
+			password: hashedPassword,
 			position,
+			employeeId,
 		})
+
 		await user.save()
 
+		// Generate JWT token
 		const token = jwt.sign(
 			{
 				userId: user._id,
 				isAdmin: user.isAdmin,
 				position: user.position,
 				username: user.username,
+				employeeId: user.employeeId,
 			},
 			process.env.JWT_SECRET,
 			{ expiresIn: '24h' }
@@ -77,9 +99,11 @@ router.post('/register', async (req, res) => {
 			position: user.position,
 			isAdmin: user.isAdmin,
 			username: user.username,
+			employeeId: user.employeeId,
 		})
 	} catch (error) {
-		res.status(500).json({ message: 'Error registering user' })
+		console.error('Registration error:', error)
+		res.status(500).json({ message: "Ro'yxatdan o'tishda xatolik yuz berdi" })
 	}
 })
 
@@ -87,23 +111,27 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
 	try {
 		const { username, password } = req.body
-		const user = await User.findOne({ username })
 
+		// Find user
+		const user = await User.findOne({ username })
 		if (!user) {
-			return res.status(400).json({ message: 'Invalid credentials' })
+			return res.status(400).json({ message: "Login yoki parol noto'g'ri" })
 		}
 
+		// Check password
 		const isMatch = await bcrypt.compare(password, user.password)
 		if (!isMatch) {
-			return res.status(400).json({ message: 'Invalid credentials' })
+			return res.status(400).json({ message: "Login yoki parol noto'g'ri" })
 		}
 
+		// Generate JWT token
 		const token = jwt.sign(
 			{
 				userId: user._id,
 				isAdmin: user.isAdmin,
 				position: user.position,
 				username: user.username,
+				employeeId: user.employeeId,
 			},
 			process.env.JWT_SECRET,
 			{ expiresIn: '24h' }
@@ -114,9 +142,11 @@ router.post('/login', async (req, res) => {
 			position: user.position,
 			isAdmin: user.isAdmin,
 			username: user.username,
+			employeeId: user.employeeId,
 		})
 	} catch (error) {
-		res.status(500).json({ message: 'Error logging in' })
+		console.error('Login error:', error)
+		res.status(500).json({ message: 'Kirishda xatolik yuz berdi' })
 	}
 })
 
