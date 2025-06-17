@@ -2,8 +2,6 @@ const express = require('express')
 const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
 const PDFDocument = require('pdfkit')
-const ExcelJS = require('exceljs')
-const { sendTelegramNotification } = require('../utils/telegram')
 const router = express.Router()
 
 // Months list in English
@@ -33,48 +31,12 @@ router.post('/', auth, async (req, res) => {
 			return res.status(400).json({ message: 'All fields are required' })
 		}
 
-		// Validate user
-		if (!req.user || !req.user._id) {
-			return res.status(401).json({ message: 'User not authenticated' })
-		}
-
-		// Validate date format
-		const startDate = new Date(startTime)
-		const endDate = new Date(endTime)
-		const entryDate = new Date(date)
-
-		if (
-			isNaN(startDate.getTime()) ||
-			isNaN(endDate.getTime()) ||
-			isNaN(entryDate.getTime())
-		) {
-			return res.status(400).json({ message: 'Invalid date format' })
-		}
-
-		// Check for overlapping entries
-		const existingEntry = await TimeEntry.findOne({
-			user: req.user._id,
-			date: entryDate,
-			$or: [
-				{
-					startTime: { $lt: endDate },
-					endTime: { $gt: startDate },
-				},
-			],
-		})
-
-		if (existingEntry) {
-			return res
-				.status(400)
-				.json({ message: 'Time entry overlaps with existing entry' })
-		}
-
 		// Create time entry
 		const timeEntry = new TimeEntry({
 			user: req.user._id,
-			startTime: startDate,
-			endTime: endDate,
-			date: entryDate,
+			startTime,
+			endTime,
+			date,
 			position: req.user.position,
 			overtimeReason: overtimeReason || null,
 			responsiblePerson: responsiblePerson || '',
@@ -85,38 +47,10 @@ router.post('/', auth, async (req, res) => {
 		// Populate user info
 		await timeEntry.populate('user', 'username position')
 
-		// Send Telegram notification
-		const message = `
-🆕 <b>Yangi vaqt qo'shildi</b>
-
-👤 Foydalanuvchi: ${timeEntry.user.username}
-📅 Sana: ${new Date(timeEntry.date).toLocaleDateString()}
-⏰ Vaqt: ${new Date(timeEntry.startTime).toLocaleTimeString()} - ${new Date(
-			timeEntry.endTime
-		).toLocaleTimeString()}
-⏱️ Soatlar: ${timeEntry.hours}
-${
-	timeEntry.overtimeReason
-		? `\n⚠️ Qo'shimcha ish sababi: ${timeEntry.overtimeReason}`
-		: ''
-}
-${
-	timeEntry.responsiblePerson
-		? `\n👥 Mas'ul shaxs: ${timeEntry.responsiblePerson}`
-		: ''
-}
-		`.trim()
-
-		await sendTelegramNotification(message)
-
 		res.status(201).json(timeEntry)
 	} catch (error) {
 		console.error('Error adding time entry:', error)
-		res.status(500).json({
-			message: 'Error adding time entry',
-			error: error.message,
-			stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-		})
+		res.status(500).json({ message: 'Error adding time entry' })
 	}
 })
 
@@ -130,24 +64,10 @@ router.get('/my-entries', auth, async (req, res) => {
 				model: 'User',
 			})
 			.sort({ date: -1 })
-			.lean()
-
-		// Format dates for frontend
-		const formattedEntries = timeEntries.map(entry => ({
-			...entry,
-			startTime: new Date(entry.startTime).toISOString(),
-			endTime: new Date(entry.endTime).toISOString(),
-			date: new Date(entry.date).toISOString(),
-		}))
-
-		res.json(formattedEntries)
+		res.json(timeEntries)
 	} catch (error) {
 		console.error('Error fetching time entries:', error)
-		res.status(500).json({
-			message: 'Vaqtlarni yuklashda xatolik',
-			error: error.message,
-			stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-		})
+		res.status(500).json({ message: 'Vaqtlarni yuklashda xatolik' })
 	}
 })
 
@@ -654,161 +574,6 @@ router.put('/:id', auth, async (req, res) => {
 	} catch (error) {
 		console.error('Error updating time entry:', error)
 		res.status(500).json({ message: 'Error updating time entry' })
-	}
-})
-
-// Get worker's time entries Excel
-router.get('/worker-excel/:userId/:month/:year', auth, async (req, res) => {
-	try {
-		const { userId, month, year } = req.params
-
-		const timeEntries = await TimeEntry.find({
-			user: userId,
-			$expr: {
-				$and: [
-					{ $eq: [{ $month: '$date' }, parseInt(month)] },
-					{ $eq: [{ $year: '$date' }, parseInt(year)] },
-				],
-			},
-		})
-			.populate('user', 'username position employeeId')
-			.sort({ date: 1 })
-
-		if (!timeEntries.length) {
-			return res.status(404).json({ message: 'No entries found' })
-		}
-
-		// Create a new workbook and worksheet
-		const workbook = new ExcelJS.Workbook()
-		const worksheet = workbook.addWorksheet('Time Report')
-
-		// Add headers
-		worksheet.columns = [
-			{ header: 'Employee ID', key: 'employeeId', width: 15 },
-			{ header: 'Username', key: 'username', width: 20 },
-			{ header: 'Total Hours', key: 'totalHours', width: 15 },
-			{ header: 'Total Days', key: 'totalDays', width: 15 },
-			{ header: 'Regular Days', key: 'regularDays', width: 15 },
-			{ header: 'Overtime Days', key: 'overtimeDays', width: 15 },
-		]
-
-		// Calculate statistics
-		const totalHours = timeEntries.reduce((sum, entry) => sum + entry.hours, 0)
-		const regularDays = timeEntries.filter(entry => entry.hours <= 12).length
-		const overtimeDays = timeEntries.filter(entry => entry.hours > 12).length
-
-		// Add data row
-		worksheet.addRow({
-			employeeId: timeEntries[0].user.employeeId,
-			username: timeEntries[0].user.username,
-			totalHours: totalHours.toFixed(1),
-			totalDays: timeEntries.length,
-			regularDays: regularDays,
-			overtimeDays: overtimeDays,
-		})
-
-		// Style the header row
-		worksheet.getRow(1).font = { bold: true }
-		worksheet.getRow(1).fill = {
-			type: 'pattern',
-			pattern: 'solid',
-			fgColor: { argb: '4E7BEE' },
-		}
-		worksheet.getRow(1).font = { color: { argb: 'FFFFFF' } }
-
-		// Set response headers
-		res.setHeader(
-			'Content-Type',
-			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-		)
-		res.setHeader(
-			'Content-Disposition',
-			`attachment; filename=time-report-${
-				months[parseInt(month) - 1]
-			}-${year}.xlsx`
-		)
-
-		// Write to response
-		await workbook.xlsx.write(res)
-		res.end()
-	} catch (error) {
-		console.error('Error generating Excel:', error)
-		res.status(500).json({ message: 'Error generating Excel' })
-	}
-})
-
-// Get all workers time entries Excel (modern sheetjs version)
-router.get('/all-workers-excel/:month/:year', auth, async (req, res) => {
-	try {
-		const { month, year } = req.params
-		const XLSX = require('xlsx')
-
-		// Get all time entries for the selected month and year
-		const timeEntries = await TimeEntry.find({
-			$expr: {
-				$and: [
-					{ $eq: [{ $month: '$date' }, parseInt(month)] },
-					{ $eq: [{ $year: '$date' }, parseInt(year)] },
-				],
-			},
-		})
-			.populate('user', 'username position employeeId')
-			.sort({ date: 1 })
-
-		if (!timeEntries.length) {
-			return res.status(404).json({ message: 'No entries found' })
-		}
-
-		// Group entries by user
-		const userStats = timeEntries.reduce((acc, entry) => {
-			const userId = entry.user._id.toString()
-			if (!acc[userId]) {
-				acc[userId] = {
-					employeeId: entry.user.employeeId || '',
-					username: entry.user.username,
-					position: entry.user.position === 'worker' ? 'Worker' : 'Rider',
-					totalHours: 0,
-					totalDays: 0,
-					regularDays: 0,
-					overtimeDays: 0,
-				}
-			}
-			acc[userId].totalHours += entry.hours
-			acc[userId].totalDays++
-			if (entry.hours <= 12) {
-				acc[userId].regularDays++
-			} else {
-				acc[userId].overtimeDays++
-			}
-			return acc
-		}, {})
-
-		// Prepare data for sheetjs
-		const data = Object.values(userStats).map(stats => ({
-			...stats,
-			totalHours: stats.totalHours.toFixed(1),
-		}))
-
-		// Create worksheet and workbook
-		const worksheet = XLSX.utils.json_to_sheet(data)
-		const workbook = XLSX.utils.book_new()
-		XLSX.utils.book_append_sheet(workbook, worksheet, 'All Workers Report')
-
-		// Write workbook to buffer
-		const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
-
-		res.setHeader(
-			'Content-Type',
-			'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-		)
-		res.setHeader(
-			'Content-Disposition',
-			`attachment; filename=all-workers-report-${month}-${year}.xlsx`
-		)
-		res.send(buffer)
-	} catch (error) {
-		console.error('Error generating Excel:', error)
-		res.status(500).json({ message: 'Error generating Excel' })
 	}
 })
 

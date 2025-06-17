@@ -5,49 +5,25 @@ const userSchema = new mongoose.Schema(
 	{
 		username: {
 			type: String,
-			required: [true, 'Username is required'],
+			required: true,
 			unique: true,
-			trim: true,
-			minlength: [3, 'Username must be at least 3 characters long'],
 		},
 		password: {
 			type: String,
-			required: [true, 'Password is required'],
-			minlength: [6, 'Password must be at least 6 characters long'],
+			required: true,
 		},
 		position: {
 			type: String,
+			required: true,
 			enum: ['worker', 'rider'],
-			required: [true, 'Position is required'],
 		},
 		isAdmin: {
 			type: Boolean,
 			default: false,
 		},
-		employeeId: {
-			type: String,
-			required: [true, 'Employee ID is required'],
-			unique: true,
-			trim: true,
-			validate: {
-				validator: function (v) {
-					return /^[A-Za-z0-9-]+$/.test(v)
-				},
-				message: 'Employee ID can only contain letters, numbers, and hyphens',
-			},
-		},
 	},
-	{
-		timestamps: true,
-		toJSON: { virtuals: true },
-		toObject: { virtuals: true },
-	}
+	{ timestamps: true }
 )
-
-// Indexes for better query performance
-userSchema.index({ username: 1 })
-userSchema.index({ employeeId: 1 })
-userSchema.index({ position: 1 })
 
 userSchema.pre('save', async function (next) {
 	if (!this.isModified('password')) return next()

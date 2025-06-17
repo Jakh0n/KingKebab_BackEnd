@@ -7,22 +7,17 @@ const router = express.Router()
 // Create Admin (maxsus endpoint)
 router.post('/create-admin', async (req, res) => {
 	try {
-		const { username, password, position, employeeId } = req.body
+		const { username, password, position } = req.body
 
-		const existingUser = await User.findOne({
-			$or: [{ username }, { employeeId }],
-		})
+		const existingUser = await User.findOne({ username })
 		if (existingUser) {
-			return res
-				.status(400)
-				.json({ message: 'Username or Employee ID already exists' })
+			return res.status(400).json({ message: 'Username already exists' })
 		}
 
 		const user = new User({
 			username,
 			password,
 			position,
-			employeeId,
 			isAdmin: true, // Admin huquqi bilan yaratish
 		})
 		await user.save()
@@ -33,7 +28,6 @@ router.post('/create-admin', async (req, res) => {
 				isAdmin: true,
 				position: user.position,
 				username: user.username,
-				employeeId: user.employeeId,
 			},
 			process.env.JWT_SECRET,
 			{ expiresIn: '24h' }
@@ -44,7 +38,6 @@ router.post('/create-admin', async (req, res) => {
 			position: user.position,
 			isAdmin: true,
 			username: user.username,
-			employeeId: user.employeeId,
 		})
 	} catch (error) {
 		res.status(500).json({ message: 'Error creating admin user' })
@@ -54,56 +47,39 @@ router.post('/create-admin', async (req, res) => {
 // Register
 router.post('/register', async (req, res) => {
 	try {
-		const { username, password, position, employeeId } = req.body
+		const { username, password, position } = req.body
 
-		// Check if user already exists
-		const existingUser = await User.findOne({
-			$or: [{ username }, { employeeId }],
-		})
+		const existingUser = await User.findOne({ username })
 		if (existingUser) {
-			return res.status(400).json({
-				message: 'Username or Employee ID already exists',
-			})
+			return res.status(400).json({ message: 'Username already exists' })
 		}
 
-		// Create new user
 		const user = new User({
 			username,
 			password,
 			position,
-			employeeId,
 		})
-
 		await user.save()
 
-		// Generate token
 		const token = jwt.sign(
 			{
 				userId: user._id,
-				username: user.username,
+				isAdmin: user.isAdmin,
 				position: user.position,
-				employeeId: user.employeeId,
+				username: user.username,
 			},
 			process.env.JWT_SECRET,
 			{ expiresIn: '24h' }
 		)
 
 		res.status(201).json({
-			message: 'User registered successfully',
 			token,
-			user: {
-				id: user._id,
-				username: user.username,
-				position: user.position,
-				employeeId: user.employeeId,
-			},
+			position: user.position,
+			isAdmin: user.isAdmin,
+			username: user.username,
 		})
 	} catch (error) {
-		console.error('Registration error:', error)
-		res.status(500).json({
-			message: 'Error registering user',
-			error: error.message,
-		})
+		res.status(500).json({ message: 'Error registering user' })
 	}
 })
 
@@ -128,7 +104,6 @@ router.post('/login', async (req, res) => {
 				isAdmin: user.isAdmin,
 				position: user.position,
 				username: user.username,
-				employeeId: user.employeeId,
 			},
 			process.env.JWT_SECRET,
 			{ expiresIn: '24h' }
@@ -139,7 +114,6 @@ router.post('/login', async (req, res) => {
 			position: user.position,
 			isAdmin: user.isAdmin,
 			username: user.username,
-			employeeId: user.employeeId,
 		})
 	} catch (error) {
 		res.status(500).json({ message: 'Error logging in' })
