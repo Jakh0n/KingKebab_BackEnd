@@ -51,12 +51,12 @@ const timeEntrySchema = new mongoose.Schema(
 // 3 oydan eski ma'lumotlarni o'chirish uchun TTL indeksi
 timeEntrySchema.index({ date: 1 }, { expireAfterSeconds: 7776000 }) // 90 kun = 7776000 sekund
 
-// Hours ni avtomatik hisoblash
+// Automatically calculate hours
 timeEntrySchema.pre('save', function (next) {
 	const start = new Date(this.startTime)
 	const end = new Date(this.endTime)
 
-	// Soatlarni olish
+	// Get hours
 	const startHour = start.getHours()
 	const endHour = end.getHours()
 	const startMinutes = start.getMinutes()
@@ -67,11 +67,11 @@ timeEntrySchema.pre('save', function (next) {
 		endHour < startHour ||
 		(endHour === startHour && endMinutes < startMinutes)
 	) {
-		// Agar tugash vaqti kichik bo'lsa (masalan 21:00 - 09:00)
+		// If end time is less than start time (e.g., 21:00 - 09:00)
 		workHours = 24 - startHour + endHour
 		workHours = workHours + (endMinutes - startMinutes) / 60
 	} else {
-		// Oddiy holat (masalan 09:00 - 17:00)
+		// Normal case (e.g., 09:00 - 17:00)
 		workHours = endHour - startHour + (endMinutes - startMinutes) / 60
 	}
 

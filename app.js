@@ -23,11 +23,11 @@ app.use('/api/auth', require('./routes/auth'))
 app.use('/api/time', require('./routes/time'))
 app.use('/api/users', require('./routes/users'))
 
-// MongoDB ulanish
+// MongoDB connection
 mongoose
 	.connect(process.env.MONGODB_URI)
-	.then(() => console.log('MongoDB ulanish muvaffaqiyatli'))
-	.catch(err => console.error('MongoDB ulanish xatosi:', err))
+	.then(() => console.log('MongoDB connection successful'))
+	.catch(err => console.error('MongoDB connection error:', err))
 
 const PORT = process.env.PORT || 5000
-app.listen(PORT, () => console.log(`Server ${PORT} portda ishlamoqda`))
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`))

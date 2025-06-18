@@ -74,7 +74,7 @@ router.get('/my-entries', auth, async (req, res) => {
 		res.json(timeEntries)
 	} catch (error) {
 		console.error('Error fetching time entries:', error)
-		res.status(500).json({ message: 'Vaqtlarni yuklashda xatolik' })
+		res.status(500).json({ message: 'Error loading time entries' })
 	}
 })
 
@@ -499,7 +499,7 @@ router.get('/daily/:date', auth, async (req, res) => {
 
 		res.json(entries)
 	} catch (error) {
-		res.status(500).json({ message: 'Vaqtlarni olishda xatolik' })
+		res.status(500).json({ message: 'Error fetching time entries' })
 	}
 })
 
@@ -520,7 +520,7 @@ router.get('/weekly/:startDate', auth, async (req, res) => {
 
 		res.json(entries)
 	} catch (error) {
-		res.status(500).json({ message: 'Vaqtlarni olishda xatolik' })
+		res.status(500).json({ message: 'Error fetching time entries' })
 	}
 })
 
