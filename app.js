@@ -22,6 +22,7 @@ app.use(express.json())
 app.use('/api/auth', require('./routes/auth'))
 app.use('/api/time', require('./routes/time'))
 app.use('/api/users', require('./routes/users'))
+app.use('/api/announcements', require('./routes/announcements'))
 
 // MongoDB connection
 mongoose

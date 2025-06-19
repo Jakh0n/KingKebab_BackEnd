@@ -533,14 +533,14 @@ router.delete('/:id', auth, async (req, res) => {
 		})
 
 		if (!timeEntry) {
-			return res.status(404).json({ message: 'Vaqt yozuvi topilmadi' })
+			return res.status(404).json({ message: 'Time entry not found' })
 		}
 
 		await timeEntry.deleteOne()
-		res.json({ message: "Vaqt yozuvi o'chirildi" })
+		res.json({ message: 'Time entry deleted' })
 	} catch (error) {
 		console.error('Error:', error)
-		res.status(500).json({ message: 'Server xatosi' })
+		res.status(500).json({ message: 'Server error' })
 	}
 })
 
