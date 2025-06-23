@@ -4,8 +4,10 @@ const cors = require('cors')
 const dotenv = require('dotenv')
 const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
+const path = require('path')
 const authRoutes = require('./routes/auth')
 const timeRoutes = require('./routes/time')
+const profileRoutes = require('./routes/profile')
 
 dotenv.config()
 
@@ -14,6 +16,9 @@ const app = express()
 // Security middleware
 app.use(helmet())
 app.use(express.json())
+
+// Serve static files for uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 // CORS configuration
 app.use(
@@ -60,6 +65,7 @@ app.use((err, req, res, next) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/time', timeRoutes)
+app.use('/api/profile', profileRoutes)
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {

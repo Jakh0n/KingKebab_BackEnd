@@ -19,6 +19,7 @@
 		"helmet": "^7.0.0",
 		"jsonwebtoken": "^9.0.0",
 		"mongoose": "^6.10.0",
+		"multer": "^2.0.1",
 		"pdfkit": "^0.14.0"
 	},
 	"devDependencies": {
