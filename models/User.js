@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema(
 		position: {
 			type: String,
 			required: true,
-			enum: ['worker', 'rider'],
+			enum: ['worker', 'rider', 'monthly'],
 		},
 		department: {
 			type: String,
@@ -85,6 +85,17 @@ const userSchema = new mongoose.Schema(
 				type: String,
 				default: '',
 			},
+		},
+		monthlyTargetHours: {
+			type: Number,
+			default: 160,
+			min: 80,
+			max: 240,
+		},
+		monthlySchedule: {
+			type: String,
+			enum: ['full-time', 'part-time'],
+			default: 'full-time',
 		},
 	},
 	{ timestamps: true }
