@@ -68,6 +68,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/time', timeRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/telegram', telegramRoutes)
+app.use('/api/notify', require('./routes/notify'))
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {

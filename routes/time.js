@@ -2,7 +2,7 @@ const express = require('express')
 const TimeEntry = require('../models/TimeEntry')
 const { auth, adminAuth } = require('../middleware/auth')
 const PDFDocument = require('pdfkit')
-const telegramService = require('../services/telegramService')
+// Telegram service removed - notifications handled by frontend
 const router = express.Router()
 
 // Months list in English
@@ -55,24 +55,7 @@ router.post('/', auth, async (req, res) => {
 		// Populate user info
 		await timeEntry.populate('user', 'username position employeeId')
 
-		// Send Telegram notification
-		try {
-			await telegramService.sendTimeEntryNotification(
-				{
-					user: timeEntry.user,
-					date: timeEntry.date,
-					startTime: timeEntry.startTime,
-					endTime: timeEntry.endTime,
-					hours: timeEntry.hours,
-					overtimeReason: timeEntry.overtimeReason,
-					responsiblePerson: timeEntry.responsiblePerson,
-				},
-				'added'
-			)
-		} catch (telegramError) {
-			console.error('Telegram notification error:', telegramError.message)
-			// Don't fail the request if Telegram fails
-		}
+		// Telegram notifications are handled by frontend
 
 		res.status(201).json(timeEntry)
 	} catch (error) {
@@ -597,24 +580,7 @@ router.put('/:id', auth, async (req, res) => {
 		// Populate user info
 		await timeEntry.populate('user', 'username position employeeId')
 
-		// Send Telegram notification for update
-		try {
-			await telegramService.sendTimeEntryNotification(
-				{
-					user: timeEntry.user,
-					date: timeEntry.date,
-					startTime: timeEntry.startTime,
-					endTime: timeEntry.endTime,
-					hours: timeEntry.hours,
-					overtimeReason: timeEntry.overtimeReason,
-					responsiblePerson: timeEntry.responsiblePerson,
-				},
-				'updated'
-			)
-		} catch (telegramError) {
-			console.error('Telegram notification error:', telegramError.message)
-			// Don't fail the request if Telegram fails
-		}
+		// Telegram notifications are handled by frontend
 
 		res.json(timeEntry)
 	} catch (error) {
