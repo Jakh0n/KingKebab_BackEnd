@@ -8,6 +8,7 @@ const path = require('path')
 const authRoutes = require('./routes/auth')
 const timeRoutes = require('./routes/time')
 const profileRoutes = require('./routes/profile')
+const telegramRoutes = require('./routes/telegram')
 
 dotenv.config()
 
@@ -66,6 +67,7 @@ app.use((err, req, res, next) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/time', timeRoutes)
 app.use('/api/profile', profileRoutes)
+app.use('/api/telegram', telegramRoutes)
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {

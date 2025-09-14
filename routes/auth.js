@@ -2,6 +2,7 @@ const express = require('express')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const User = require('../models/User')
+const telegramService = require('../services/telegramService')
 const router = express.Router()
 
 // Create Admin (maxsus endpoint)
@@ -80,6 +81,14 @@ router.post('/register', async (req, res) => {
 		})
 
 		await user.save()
+
+		// Send Telegram notification for new user registration
+		try {
+			await telegramService.sendUserRegistrationNotification(user)
+		} catch (telegramError) {
+			console.error('Telegram notification error:', telegramError.message)
+			// Don't fail the request if Telegram fails
+		}
 
 		// Generate JWT token
 		const token = jwt.sign(

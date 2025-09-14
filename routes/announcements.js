@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const Announcement = require('../models/Announcement')
 const { auth, adminAuth } = require('../middleware/auth')
+const telegramService = require('../services/telegramService')
 
 // Get all announcements
 router.get('/', auth, async (req, res) => {
@@ -30,6 +31,18 @@ router.post('/', adminAuth, async (req, res) => {
 		})
 
 		await announcement.save()
+
+		// Send Telegram notification for new announcement
+		try {
+			await telegramService.sendAnnouncementNotification(
+				announcement,
+				'created'
+			)
+		} catch (telegramError) {
+			console.error('Telegram notification error:', telegramError.message)
+			// Don't fail the request if Telegram fails
+		}
+
 		res.status(201).json(announcement)
 	} catch (error) {
 		console.error('Error creating announcement:', error)
