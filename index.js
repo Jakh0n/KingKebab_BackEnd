@@ -58,7 +58,7 @@ const connectWithRetry = () => {
 
 connectWithRetry()
 
-// Error handling middleware
+// Error handling middlewares
 app.use((err, req, res, next) => {
 	console.error(err.stack)
 	res.status(500).json({ message: 'Something went wrong!' })
@@ -69,6 +69,10 @@ app.use('/api/time', timeRoutes)
 app.use('/api/profile', profileRoutes)
 app.use('/api/telegram', telegramRoutes)
 app.use('/api/notify', require('./routes/notify'))
+app.use('/api/users', require('./routes/users'))
+app.use('/api/announcements', require('./routes/announcements'))
+app.use('/api/branches', require('./routes/branches'))
+app.use('/api/schedules', require('./routes/schedules'))
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {

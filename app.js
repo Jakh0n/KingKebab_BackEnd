@@ -24,6 +24,8 @@ app.use('/api/time', require('./routes/time'))
 app.use('/api/users', require('./routes/users'))
 app.use('/api/announcements', require('./routes/announcements'))
 app.use('/api/profile', require('./routes/profile'))
+app.use('/api/branches', require('./routes/branches'))
+app.use('/api/schedules', require('./routes/schedules'))
 
 // MongoDB connection
 mongoose

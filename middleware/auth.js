@@ -82,4 +82,7 @@ const adminAuth = async (req, res, next) => {
 	}
 }
 
-module.exports = { auth, adminAuth }
+// Alias for adminAuth for backward compatibility
+const isAdmin = adminAuth
+
+module.exports = { auth, adminAuth, isAdmin }

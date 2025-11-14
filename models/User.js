@@ -47,6 +47,11 @@ const userSchema = new mongoose.Schema(
 			type: Number,
 			default: 0,
 		},
+		hourlyWage: {
+			type: Number,
+			default: 0,
+			min: 0,
+		},
 		hireDate: {
 			type: Date,
 			default: Date.now,

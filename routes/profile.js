@@ -85,6 +85,8 @@ router.put('/', auth, async (req, res) => {
 		if (req.body.skills) updates.skills = req.body.skills
 		if (req.body.emergencyContact)
 			updates.emergencyContact = req.body.emergencyContact
+		if (req.body.hourlyWage !== undefined)
+			updates.hourlyWage = req.body.hourlyWage
 
 		const user = await User.findByIdAndUpdate(
 			req.user._id,
