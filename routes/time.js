@@ -30,6 +30,7 @@ router.post('/', auth, async (req, res) => {
 			date,
 			overtimeReason,
 			responsiblePerson,
+			latePerson,
 			employeeId,
 		} = req.body
 
@@ -48,6 +49,7 @@ router.post('/', auth, async (req, res) => {
 			employeeId: employeeId || req.user.employeeId,
 			overtimeReason: overtimeReason || null,
 			responsiblePerson: responsiblePerson || '',
+			latePerson: latePerson || '',
 		})
 
 		await timeEntry.save()
@@ -278,6 +280,12 @@ router.get('/worker-pdf/:userId/:month/:year', auth, async (req, res) => {
 						.fill('#5bc0de')
 						.text(`Responsible: ${entry.responsiblePerson}`, 350, rowTop + 30)
 				}
+
+				if (entry.overtimeReason === 'Late Arrival' && entry.latePerson) {
+					doc
+						.fill('#5bc0de')
+						.text(`Late Person: ${entry.latePerson}`, 350, rowTop + 30)
+				}
 			}
 
 			rowTop += 50
@@ -472,6 +480,12 @@ router.get('/my-pdf/:month/:year', auth, async (req, res) => {
 						.fill('#5bc0de')
 						.text(`Responsible: ${entry.responsiblePerson}`, 350, rowTop + 30)
 				}
+
+				if (entry.overtimeReason === 'Late Arrival' && entry.latePerson) {
+					doc
+						.fill('#5bc0de')
+						.text(`Late Person: ${entry.latePerson}`, 350, rowTop + 30)
+				}
 			}
 
 			rowTop += 50
@@ -550,8 +564,14 @@ router.delete('/:id', auth, async (req, res) => {
 // Vaqt yozuvini yangilash
 router.put('/:id', auth, async (req, res) => {
 	try {
-		const { startTime, endTime, date, overtimeReason, responsiblePerson } =
-			req.body
+		const {
+			startTime,
+			endTime,
+			date,
+			overtimeReason,
+			responsiblePerson,
+			latePerson,
+		} = req.body
 
 		// Validate input
 		if (!startTime || !endTime || !date) {
@@ -574,6 +594,7 @@ router.put('/:id', auth, async (req, res) => {
 		timeEntry.date = date
 		timeEntry.overtimeReason = overtimeReason || null
 		timeEntry.responsiblePerson = responsiblePerson || ''
+		timeEntry.latePerson = latePerson || ''
 
 		await timeEntry.save()
 

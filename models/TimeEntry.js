@@ -36,12 +36,16 @@ const timeEntrySchema = new mongoose.Schema(
 		},
 		overtimeReason: {
 			type: String,
-			enum: ['Busy', 'Last Order', 'Company Request', null],
+			enum: ['Busy', 'Last Order', 'Company Request', 'Late Arrival', null],
 			default: null,
 		},
 		responsiblePerson: {
 			type: String,
 			enum: ['Adilcan', 'Boss', ''],
+			default: '',
+		},
+		latePerson: {
+			type: String,
 			default: '',
 		},
 	},

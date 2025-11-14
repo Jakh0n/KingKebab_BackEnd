@@ -74,6 +74,7 @@ class TelegramService {
 			hours,
 			overtimeReason,
 			responsiblePerson,
+			latePerson,
 		} = data
 
 		let emoji = '🕒'
@@ -120,6 +121,10 @@ class TelegramService {
 
 		if (responsiblePerson) {
 			message += `\n👨‍💼 <b>Responsible:</b> ${responsiblePerson}`
+		}
+
+		if (overtimeReason === 'Late Arrival' && latePerson) {
+			message += `\n⏰ <b>Late Person:</b> ${latePerson}`
 		}
 
 		return await this.sendToAdmins(message, { parse_mode: 'HTML' })
