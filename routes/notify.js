@@ -15,7 +15,9 @@ router.post('/telegram', auth, async (req, res) => {
 		}
 
 		const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
-		const ADMIN_CHAT_IDS = ['6808924520', '158467590']
+		const ADMIN_CHAT_IDS = process.env.TELEGRAM_ADMIN_CHAT_IDS
+			? process.env.TELEGRAM_ADMIN_CHAT_IDS.split(',').map(id => id.trim()).filter(id => id)
+			: []
 
 		if (!BOT_TOKEN) {
 			console.log('❌ Telegram bot token not configured in backend')

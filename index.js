@@ -5,12 +5,21 @@ const dotenv = require('dotenv')
 const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const path = require('path')
+
+// Load environment variables FIRST, before any other modules
+// Explicitly specify the path to ensure .env is loaded from backend directory
+dotenv.config({ path: path.join(__dirname, '.env') })
+
+// Verify critical environment variables are loaded
+if (!process.env.TELEGRAM_BOT_TOKEN) {
+	console.warn('⚠️ WARNING: TELEGRAM_BOT_TOKEN not found in environment variables')
+	console.warn('   Make sure .env file exists in backend/ directory')
+}
+
 const authRoutes = require('./routes/auth')
 const timeRoutes = require('./routes/time')
 const profileRoutes = require('./routes/profile')
 const telegramRoutes = require('./routes/telegram')
-
-dotenv.config()
 
 const app = express()
 
@@ -32,12 +41,24 @@ app.use(
 	})
 )
 
-// Rate limiting
+// Rate limiting - general
 const limiter = rateLimit({
-	windowMs: 15 * 60 * 1000, // 15 daqiqa
-	max: 100, // har bir IP dan 100 ta so'rov
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 100, // 100 requests per IP
 })
 app.use(limiter)
+
+// Stricter rate limiting for sensitive endpoints
+const strictLimiter = rateLimit({
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	max: 10, // Only 10 requests per IP for sensitive operations
+	message: 'Too many requests from this IP, please try again later.',
+})
+
+// Apply strict rate limiting to sensitive routes
+app.use('/api/auth/create-admin', strictLimiter)
+app.use('/api/telegram', strictLimiter)
+app.use('/api/users', strictLimiter)
 
 // MongoDB connection with retry logic
 const connectWithRetry = () => {

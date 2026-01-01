@@ -2,14 +2,58 @@ const axios = require('axios')
 
 class TelegramService {
 	constructor() {
-		this.botToken = process.env.TELEGRAM_BOT_TOKEN
-		this.baseURL = `https://api.telegram.org/bot${this.botToken}`
+		// Ensure environment variables are loaded
+		// This is a safety check in case the service is instantiated before dotenv.config()
+		if (!process.env.TELEGRAM_BOT_TOKEN && typeof require !== 'undefined') {
+			try {
+				require('dotenv').config({
+					path: require('path').join(__dirname, '../.env'),
+				})
+			} catch (e) {
+				// dotenv might already be loaded, that's fine
+			}
+		}
 
-		// Admin/Manager chat IDs - should be moved to database later
-		this.adminChatIds = [
-			'6808924520', // First admin
-			'158467590', // Second admin
-		]
+		this.botToken = process.env.TELEGRAM_BOT_TOKEN
+
+		// Debug: Check if token exists (without exposing it)
+		if (!this.botToken) {
+			console.warn('⚠️ Telegram bot token not configured')
+			console.warn('   Please check:')
+			console.warn('   1. .env file exists in backend/ directory')
+			console.warn('   2. TELEGRAM_BOT_TOKEN is set in .env file')
+			console.warn(
+				'   3. No spaces around the = sign (TELEGRAM_BOT_TOKEN=your_token)'
+			)
+			console.warn('   4. Backend server was restarted after changing .env')
+			console.warn('   5. .env file is not in .gitignore (should be ignored)')
+		} else {
+			// Check if token looks valid (starts with numbers and colon)
+			if (!/^\d+:[A-Za-z0-9_-]+$/.test(this.botToken.trim())) {
+				console.warn('⚠️ Telegram bot token format looks invalid')
+				console.warn(
+					'   Token should be in format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz'
+				)
+			} else {
+				console.log('✅ Telegram bot token found and format looks valid')
+			}
+		}
+
+		this.baseURL = this.botToken
+			? `https://api.telegram.org/bot${this.botToken}`
+			: null
+
+		// Admin chat IDs from environment variable (comma-separated)
+		this.adminChatIds = process.env.TELEGRAM_ADMIN_CHAT_IDS
+			? process.env.TELEGRAM_ADMIN_CHAT_IDS.split(',')
+					.map(id => id.trim())
+					.filter(id => id)
+			: []
+
+		// Log configuration (without exposing sensitive data)
+		if (this.botToken) {
+			console.log(`📱 Admin chat IDs: ${this.adminChatIds.length} configured`)
+		}
 	}
 
 	/**
@@ -20,7 +64,14 @@ class TelegramService {
 	 */
 	async sendMessage(chatIds, message, options = {}) {
 		if (!this.botToken) {
-			console.error('Telegram bot token not configured')
+			console.error(
+				'❌ Telegram bot token not configured - cannot send message'
+			)
+			return false
+		}
+
+		if (!this.baseURL) {
+			console.error('❌ Telegram bot baseURL not configured')
 			return false
 		}
 
