@@ -204,4 +204,46 @@ router.post('/login', async (req, res) => {
 	}
 })
 
+// Forgot password: verify employee ID exists (no token, lean flow)
+router.post('/forgot-password', async (req, res) => {
+	try {
+		const employeeId = (req.body.employeeId || '').trim()
+		if (!employeeId) {
+			return res.status(400).json({ message: 'Enter your Employee ID' })
+		}
+		const user = await User.findOne({ employeeId }).select('_id')
+		if (!user) {
+			return res.status(404).json({ message: 'Employee ID not found' })
+		}
+		res.json({ message: 'Employee ID verified' })
+	} catch (error) {
+		console.error('Forgot password error:', error)
+		res.status(500).json({ message: 'Something went wrong' })
+	}
+})
+
+// Reset password: set new password by employee ID
+router.post('/reset-password', async (req, res) => {
+	try {
+		const { employeeId, newPassword } = req.body
+		const pwd = (newPassword || '').trim()
+		if (!(employeeId && pwd)) {
+			return res.status(400).json({ message: 'Employee ID and new password are required' })
+		}
+		if (pwd.length < 6) {
+			return res.status(400).json({ message: 'Password must be at least 6 characters' })
+		}
+		const user = await User.findOne({ employeeId })
+		if (!user) {
+			return res.status(404).json({ message: 'Employee ID not found' })
+		}
+		user.password = await bcrypt.hash(pwd, 10)
+		await user.save()
+		res.json({ message: 'Password updated' })
+	} catch (error) {
+		console.error('Reset password error:', error)
+		res.status(500).json({ message: 'Something went wrong' })
+	}
+})
+
 module.exports = router
