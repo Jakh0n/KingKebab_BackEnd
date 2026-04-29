@@ -242,7 +242,7 @@ router.delete('/:id/permanent', adminAuth, async (req, res) => {
 router.get('/public/active', async (req, res) => {
 	try {
 		const branches = await Branch.findActive().select(
-			'name code location.address location.city operatingHours'
+			'name code location.address location.city location.district location.coordinates contact.phone operatingHours capacity'
 		)
 		res.json(branches)
 	} catch (error) {
