@@ -26,6 +26,12 @@ const authRoutes = require("./routes/auth");
 const timeRoutes = require("./routes/time");
 const profileRoutes = require("./routes/profile");
 const telegramRoutes = require("./routes/telegram");
+const miniAppBotRoutes = require("./routes/miniAppBot");
+const {
+  setupMiniAppBotProfile,
+  setupMiniAppWebhook,
+  resolvePublicBackendUrl,
+} = require("./services/miniAppBotService");
 
 const app = express();
 
@@ -40,6 +46,9 @@ app.use(express.json());
 
 // Serve static files for uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Mini App bot webhook — before rate limiter (Telegram retries)
+app.use("/api/telegram-miniapp", miniAppBotRoutes);
 
 // CORS configuration
 app.use(
@@ -114,6 +123,20 @@ app.use("/api/branches", require("./routes/branches"));
 app.use("/api/schedules", require("./routes/schedules"));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+
+  try {
+    await setupMiniAppBotProfile();
+    const publicUrl = resolvePublicBackendUrl();
+    if (publicUrl) {
+      await setupMiniAppWebhook(publicUrl);
+    } else {
+      console.warn(
+        "⚠️ BACKEND_PUBLIC_URL / RENDER_EXTERNAL_URL not set — Mini App /start webhook skipped",
+      );
+    }
+  } catch (error) {
+    console.error("Mini App bot boot setup error:", error.message);
+  }
 });
