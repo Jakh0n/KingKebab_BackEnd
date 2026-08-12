@@ -3,7 +3,50 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const User = require('../models/User')
 const telegramService = require('../services/telegramService')
+const { validateTelegramWebAppData } = require('../utils/telegramAuth')
 const router = express.Router()
+
+function issueAuthToken(user) {
+	return jwt.sign(
+		{
+			userId: user._id,
+			isAdmin: user.isAdmin,
+			position: user.position,
+			username: user.username,
+			employeeId: user.employeeId,
+		},
+		process.env.JWT_SECRET,
+		{ expiresIn: '24h' }
+	)
+}
+
+function buildAuthResponse(user, token) {
+	return {
+		token,
+		position: user.position,
+		isAdmin: user.isAdmin,
+		username: user.username,
+		employeeId: user.employeeId,
+	}
+}
+
+function getTelegramUserFromInitData(initData) {
+	const botToken = process.env.TELEGRAM_BOT_TOKEN
+	if (!botToken) {
+		const error = new Error('Telegram bot is not configured')
+		error.status = 500
+		throw error
+	}
+
+	const telegramUser = validateTelegramWebAppData(initData, botToken)
+	if (!telegramUser) {
+		const error = new Error('Invalid or expired Telegram data')
+		error.status = 401
+		throw error
+	}
+
+	return telegramUser
+}
 
 // Create Admin (SECURED - requires master key or existing admin)
 router.post('/create-admin', async (req, res) => {
@@ -243,6 +286,104 @@ router.post('/reset-password', async (req, res) => {
 	} catch (error) {
 		console.error('Reset password error:', error)
 		res.status(500).json({ message: 'Something went wrong' })
+	}
+})
+
+// Telegram Mini App: auto-login if account is already linked
+router.post('/telegram', async (req, res) => {
+	try {
+		const { initData } = req.body
+		if (!initData) {
+			return res.status(400).json({ message: 'Telegram initData is required' })
+		}
+
+		const telegramUser = getTelegramUserFromInitData(initData)
+		const telegramId = String(telegramUser.id)
+
+		const user = await User.findOne({ telegramId })
+		if (!user) {
+			return res.status(404).json({
+				message: 'Telegram account is not linked',
+				code: 'TELEGRAM_NOT_LINKED',
+				telegram: {
+					id: telegramId,
+					username: telegramUser.username || '',
+					firstName: telegramUser.first_name || '',
+				},
+			})
+		}
+
+		if (user.isActive === false) {
+			return res.status(403).json({ message: 'Account is inactive' })
+		}
+
+		user.lastLogin = new Date()
+		if (telegramUser.username) {
+			user.telegramUsername = telegramUser.username
+		}
+		await user.save()
+
+		const token = issueAuthToken(user)
+		res.json(buildAuthResponse(user, token))
+	} catch (error) {
+		console.error('Telegram login error:', error)
+		res.status(error.status || 500).json({
+			message: error.message || 'Telegram login failed',
+		})
+	}
+})
+
+// Telegram Mini App: link existing account once, then auto-login next time
+router.post('/telegram/link', async (req, res) => {
+	try {
+		const { initData, username, password } = req.body
+		if (!initData || !username || !password) {
+			return res.status(400).json({
+				message: 'initData, username and password are required',
+			})
+		}
+
+		const telegramUser = getTelegramUserFromInitData(initData)
+		const telegramId = String(telegramUser.id)
+
+		const existingLink = await User.findOne({ telegramId })
+		if (existingLink) {
+			const token = issueAuthToken(existingLink)
+			return res.json(buildAuthResponse(existingLink, token))
+		}
+
+		const user = await User.findOne({ username })
+		if (!user) {
+			return res.status(400).json({ message: "Login yoki parol noto'g'ri" })
+		}
+
+		const isMatch = await bcrypt.compare(password, user.password)
+		if (!isMatch) {
+			return res.status(400).json({ message: "Login yoki parol noto'g'ri" })
+		}
+
+		if (user.isActive === false) {
+			return res.status(403).json({ message: 'Account is inactive' })
+		}
+
+		if (user.telegramId && user.telegramId !== telegramId) {
+			return res.status(409).json({
+				message: 'This account is already linked to another Telegram user',
+			})
+		}
+
+		user.telegramId = telegramId
+		user.telegramUsername = telegramUser.username || ''
+		user.lastLogin = new Date()
+		await user.save()
+
+		const token = issueAuthToken(user)
+		res.json(buildAuthResponse(user, token))
+	} catch (error) {
+		console.error('Telegram link error:', error)
+		res.status(error.status || 500).json({
+			message: error.message || 'Failed to link Telegram account',
+		})
 	}
 })
 

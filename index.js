@@ -25,8 +25,13 @@ const telegramRoutes = require("./routes/telegram");
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware — allow Telegram Mini App WebView framing of API health pages if any
+app.use(
+  helmet({
+    frameguard: false,
+    contentSecurityPolicy: false,
+  }),
+);
 app.use(express.json());
 
 // Serve static files for uploads
@@ -35,7 +40,14 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // CORS configuration
 app.use(
   cors({
-    origin: [process.env.FRONTEND_URL, "http://localhost:3000"],
+    origin: [
+      process.env.FRONTEND_URL,
+      "http://localhost:3000",
+      "https://shift.kingkebaborder.co.kr",
+      "https://www.kingkebab.co.kr",
+      "https://kingkebab.co.kr",
+      "https://kingtime.vercel.app",
+    ].filter(Boolean),
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -59,6 +71,8 @@ const strictLimiter = rateLimit({
 
 // Apply strict rate limiting to sensitive routes
 app.use("/api/auth/create-admin", strictLimiter);
+app.use("/api/auth/telegram", strictLimiter);
+app.use("/api/auth/telegram/link", strictLimiter);
 app.use("/api/telegram", strictLimiter);
 app.use("/api/users", strictLimiter);
 

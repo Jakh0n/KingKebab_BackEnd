@@ -113,6 +113,16 @@ const userSchema = new mongoose.Schema(
       customersLikeLeast: { type: String, default: "" },
       removeOneAndWhy: { type: String, default: "" },
     },
+    telegramId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: undefined,
+    },
+    telegramUsername: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true },
 );
