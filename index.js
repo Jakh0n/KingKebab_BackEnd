@@ -13,9 +13,13 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 // Verify critical environment variables are loaded
 if (!process.env.TELEGRAM_BOT_TOKEN) {
   console.warn(
-    "⚠️ WARNING: TELEGRAM_BOT_TOKEN not found in environment variables",
+    "⚠️ WARNING: TELEGRAM_BOT_TOKEN not found (notifications bot)",
   );
-  console.warn("   Make sure .env file exists in backend/ directory");
+}
+if (!process.env.TELEGRAM_MINI_APP_BOT_TOKEN) {
+  console.warn(
+    "⚠️ WARNING: TELEGRAM_MINI_APP_BOT_TOKEN not found (Mini App auth bot)",
+  );
 }
 
 const authRoutes = require("./routes/auth");
@@ -73,6 +77,7 @@ const strictLimiter = rateLimit({
 app.use("/api/auth/create-admin", strictLimiter);
 app.use("/api/auth/telegram", strictLimiter);
 app.use("/api/auth/telegram/link", strictLimiter);
+app.use("/api/auth/telegram/attach", strictLimiter);
 app.use("/api/telegram", strictLimiter);
 app.use("/api/users", strictLimiter);
 

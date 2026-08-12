@@ -31,9 +31,11 @@ function buildAuthResponse(user, token) {
 }
 
 function getTelegramUserFromInitData(initData) {
-	const botToken = process.env.TELEGRAM_BOT_TOKEN
+	const botToken = process.env.TELEGRAM_MINI_APP_BOT_TOKEN
 	if (!botToken) {
-		const error = new Error('Telegram bot is not configured')
+		const error = new Error(
+			'Telegram Mini App bot is not configured (set TELEGRAM_MINI_APP_BOT_TOKEN)',
+		)
 		error.status = 500
 		throw error
 	}
@@ -383,6 +385,57 @@ router.post('/telegram/link', async (req, res) => {
 		console.error('Telegram link error:', error)
 		res.status(error.status || 500).json({
 			message: error.message || 'Failed to link Telegram account',
+		})
+	}
+})
+
+// Telegram Mini App: attach Telegram to the already authenticated session
+router.post('/telegram/attach', async (req, res) => {
+	try {
+		const { initData } = req.body
+		const authHeader = req.header('Authorization')
+		const sessionToken = authHeader?.startsWith('Bearer ')
+			? authHeader.replace('Bearer ', '').trim()
+			: null
+
+		if (!initData || !sessionToken) {
+			return res.status(400).json({
+				message: 'initData and Authorization bearer token are required',
+			})
+		}
+
+		let decoded
+		try {
+			decoded = jwt.verify(sessionToken, process.env.JWT_SECRET)
+		} catch {
+			return res.status(401).json({ message: 'Invalid session' })
+		}
+
+		const telegramUser = getTelegramUserFromInitData(initData)
+		const telegramId = String(telegramUser.id)
+
+		const existingLink = await User.findOne({ telegramId })
+		if (existingLink && String(existingLink._id) !== String(decoded.userId)) {
+			return res.status(409).json({
+				message: 'This Telegram account is already linked to another user',
+			})
+		}
+
+		const user = await User.findById(decoded.userId)
+		if (!user) {
+			return res.status(404).json({ message: 'User not found' })
+		}
+
+		user.telegramId = telegramId
+		user.telegramUsername = telegramUser.username || ''
+		await user.save()
+
+		const token = issueAuthToken(user)
+		res.json(buildAuthResponse(user, token))
+	} catch (error) {
+		console.error('Telegram attach error:', error)
+		res.status(error.status || 500).json({
+			message: error.message || 'Failed to attach Telegram account',
 		})
 	}
 })

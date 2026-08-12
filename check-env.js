@@ -16,6 +16,7 @@ const requiredVars = [
 ]
 
 const optionalVars = [
+	'TELEGRAM_MINI_APP_BOT_TOKEN',
 	'TELEGRAM_ADMIN_CHAT_IDS',
 	'MASTER_ADMIN_KEY',
 	'PORT',
@@ -37,7 +38,10 @@ requiredVars.forEach(varName => {
 			console.log(`  ✅ ${varName}: ${masked}`)
 			
 			// Validate Telegram token format
-			if (varName === 'TELEGRAM_BOT_TOKEN') {
+			if (
+				varName === 'TELEGRAM_BOT_TOKEN' ||
+				varName === 'TELEGRAM_MINI_APP_BOT_TOKEN'
+			) {
 				if (!/^\d+:[A-Za-z0-9_-]+$/.test(value.trim())) {
 					console.log(`     ⚠️  Warning: Token format looks invalid`)
 					console.log(`     Expected format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)

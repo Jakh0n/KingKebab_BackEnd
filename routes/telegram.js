@@ -54,7 +54,8 @@ router.post('/notify', adminAuth, async (req, res) => {
 // Get Telegram service status (admin only)
 router.get('/status', adminAuth, async (req, res) => {
 	try {
-		const isConfigured = !!process.env.TELEGRAM_BOT_TOKEN
+		const notifyConfigured = !!process.env.TELEGRAM_BOT_TOKEN
+		const miniAppConfigured = !!process.env.TELEGRAM_MINI_APP_BOT_TOKEN
 		const adminChatIds = telegramService.adminChatIds
 
 		// Log security event
@@ -67,9 +68,19 @@ router.get('/status', adminAuth, async (req, res) => {
 		res.json({
 			success: true,
 			status: {
-				configured: isConfigured,
+				notifications: {
+					configured: notifyConfigured,
+					token: notifyConfigured ? 'Configured' : 'Missing',
+					adminChatIds: adminChatIds.length,
+				},
+				miniApp: {
+					configured: miniAppConfigured,
+					token: miniAppConfigured ? 'Configured' : 'Missing',
+				},
+				// backward-compatible fields
+				configured: notifyConfigured,
 				adminChatIds: adminChatIds.length,
-				token: isConfigured ? 'Configured' : 'Missing',
+				token: notifyConfigured ? 'Configured' : 'Missing',
 			},
 		})
 	} catch (error) {
