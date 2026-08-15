@@ -21,12 +21,30 @@ function buildWelcomeText(firstName) {
 		`👑 <b>King Kebab Time</b>\n\n` +
 		`Salom${name}!\n` +
 		`Ish soatlari, overtime va smenalaringiz shu yerda.\n\n` +
-		`Pastdagi <b>Open App</b> tugmasini bosing — ilova Telegram ichida ochiladi.\n\n` +
+		`Pastdagi <b>Open App</b> tugmasini bosing — ilova darhol ochiladi.\n\n` +
 		`⏱ Tez · qulay · alohida brauzer kerak emas`
 	)
 }
 
-function buildOpenAppKeyboard() {
+/** Always-visible button above the message input (like other Mini App bots). */
+function buildPersistentOpenAppKeyboard() {
+	return {
+		keyboard: [
+			[
+				{
+					text: '🚀 Open App',
+					web_app: { url: getMiniAppUrl() },
+				},
+			],
+		],
+		resize_keyboard: true,
+		is_persistent: true,
+		input_field_placeholder: 'Open App tugmasini bosing',
+	}
+}
+
+/** Extra inline buttons inside the welcome message. */
+function buildInlineOpenAppKeyboard() {
 	return {
 		inline_keyboard: [
 			[
@@ -55,12 +73,20 @@ async function telegramCall(method, payload) {
 }
 
 async function sendWelcomeMessage(chatId, firstName) {
-	return telegramCall('sendMessage', {
+	// 1) Welcome + inline Open App
+	await telegramCall('sendMessage', {
 		chat_id: chatId,
 		text: buildWelcomeText(firstName),
 		parse_mode: 'HTML',
 		disable_web_page_preview: true,
-		reply_markup: buildOpenAppKeyboard(),
+		reply_markup: buildInlineOpenAppKeyboard(),
+	})
+
+	// 2) Persistent bottom keyboard (stays after leaving/reopening the chat)
+	await telegramCall('sendMessage', {
+		chat_id: chatId,
+		text: '👇 Asosiy tugma doim pastda turadi:',
+		reply_markup: buildPersistentOpenAppKeyboard(),
 	})
 }
 
@@ -82,23 +108,24 @@ async function setupMiniAppBotProfile() {
 			],
 		})
 
+		// Blue/text button next to the attachment area in the chat
 		await telegramCall('setChatMenuButton', {
 			menu_button: {
 				type: 'web_app',
-				text: 'Open App',
+				text: 'Open',
 				web_app: { url: webAppUrl },
 			},
 		})
 
 		await telegramCall('setMyShortDescription', {
-			short_description: 'King Kebab — ish soatlari va smenalar',
+			short_description: 'King Kebab — ish soatlari · Open App',
 		})
 
 		await telegramCall('setMyDescription', {
 			description:
 				'King Kebab Time Management.\n\n' +
 				'Ish soatlaringizni belgilang, overtime yozing va jamoa bilan sinxron qoling.\n\n' +
-				'Open App tugmasini bosing yoki /start yuboring.',
+				'Pastdagi Open tugmasini bosing yoki /start yuboring.',
 		})
 
 		console.log('✅ Mini App bot profile configured →', webAppUrl)
@@ -162,14 +189,13 @@ async function handleMiniAppUpdate(update) {
 		return
 	}
 
-	// Any other message — gentle nudge, not spammy walls of text
+	// Any other text — remind + keep persistent keyboard
 	if (text) {
 		await telegramCall('sendMessage', {
 			chat_id: chatId,
-			text:
-				`👋 Ilovani ochish uchun pastdagi tugmani bosing.\n` +
-				`Yoki /start yuboring.`,
-			reply_markup: buildOpenAppKeyboard(),
+			text: '👋 Ilovani ochish uchun pastdagi <b>Open App</b> tugmasini bosing.',
+			parse_mode: 'HTML',
+			reply_markup: buildPersistentOpenAppKeyboard(),
 		})
 	}
 }

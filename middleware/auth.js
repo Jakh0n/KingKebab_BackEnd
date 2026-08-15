@@ -29,9 +29,17 @@ async function verifyAndAttachUser(req, res, next) {
 		}
 
 		const decoded = jwt.verify(token, process.env.JWT_SECRET)
+		if (decoded.type === 'refresh') {
+			throw new Error('Invalid token')
+		}
+
 		const user = await User.findById(decoded.userId)
 		if (!user) {
 			throw new Error('User not found')
+		}
+
+		if ((decoded.tokenVersion || 0) !== (user.tokenVersion || 0)) {
+			throw new Error('Session revoked')
 		}
 
 		if (
@@ -52,7 +60,11 @@ async function verifyAndAttachUser(req, res, next) {
 		}
 		next()
 	} catch (error) {
-		res.status(401).json({ message: error.message || AUTH_ERROR_MESSAGE })
+		const isExpired = error.name === 'TokenExpiredError'
+		res.status(401).json({
+			message: isExpired ? 'jwt expired' : error.message || AUTH_ERROR_MESSAGE,
+			code: isExpired ? 'TOKEN_EXPIRED' : 'UNAUTHORIZED',
+		})
 	}
 }
 

@@ -1,12 +1,31 @@
 const express = require('express')
+const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const User = require('../models/User')
 const telegramService = require('../services/telegramService')
 const { validateTelegramWebAppData } = require('../utils/telegramAuth')
+const { getTokenFromRequest } = require('../middleware/auth')
 const router = express.Router()
 
-function issueAuthToken(user) {
+const ACCESS_TOKEN_EXPIRES_IN = '24h'
+const REFRESH_TOKEN_EXPIRES_IN = '30d'
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const ACCESS_REFRESH_WINDOW_SECONDS = 30 * 24 * 60 * 60
+
+function hashToken(token) {
+	return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+function hashesMatch(left, right) {
+	if (!left || !right) return false
+	const a = Buffer.from(String(left))
+	const b = Buffer.from(String(right))
+	if (a.length !== b.length) return false
+	return crypto.timingSafeEqual(a, b)
+}
+
+function issueAccessToken(user) {
 	return jwt.sign(
 		{
 			userId: user._id,
@@ -14,20 +33,55 @@ function issueAuthToken(user) {
 			position: user.position,
 			username: user.username,
 			employeeId: user.employeeId,
+			tokenVersion: user.tokenVersion || 0,
 		},
 		process.env.JWT_SECRET,
-		{ expiresIn: '24h' }
+		{ expiresIn: ACCESS_TOKEN_EXPIRES_IN },
 	)
 }
 
-function buildAuthResponse(user, token) {
+async function issueAuthTokens(user) {
+	const token = issueAccessToken(user)
+	const refreshToken = jwt.sign(
+		{
+			userId: user._id,
+			type: 'refresh',
+			tokenVersion: user.tokenVersion || 0,
+		},
+		process.env.JWT_SECRET,
+		{ expiresIn: REFRESH_TOKEN_EXPIRES_IN },
+	)
+
+	user.refreshTokenHash = hashToken(refreshToken)
+	user.refreshTokenExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS)
+	await User.updateOne(
+		{ _id: user._id },
+		{
+			$set: {
+				refreshTokenHash: user.refreshTokenHash,
+				refreshTokenExpiresAt: user.refreshTokenExpiresAt,
+				lastLogin: new Date(),
+			},
+		},
+	)
+
+	return { token, refreshToken }
+}
+
+function buildAuthResponse(user, tokens) {
 	return {
-		token,
+		token: tokens.token,
+		refreshToken: tokens.refreshToken,
 		position: user.position,
 		isAdmin: user.isAdmin,
 		username: user.username,
 		employeeId: user.employeeId,
 	}
+}
+
+async function sendAuthResponse(res, user, status = 200) {
+	const tokens = await issueAuthTokens(user)
+	return res.status(status).json(buildAuthResponse(user, tokens))
 }
 
 function getTelegramUserFromInitData(initData) {
@@ -104,7 +158,6 @@ router.post('/create-admin', async (req, res) => {
 		})
 		await user.save()
 
-		// Log security event with IP address
 		const clientIp = req.ip || req.connection.remoteAddress
 		console.log(`🔐 SECURITY EVENT: Admin user created`)
 		console.log(`   Username: ${username}`)
@@ -112,23 +165,7 @@ router.post('/create-admin', async (req, res) => {
 		console.log(`   Timestamp: ${new Date().toISOString()}`)
 		console.log(`   User-Agent: ${req.get('user-agent') || 'Unknown'}`)
 
-		const token = jwt.sign(
-			{
-				userId: user._id,
-				isAdmin: true,
-				position: user.position,
-				username: user.username,
-			},
-			process.env.JWT_SECRET,
-			{ expiresIn: '24h' }
-		)
-
-		res.status(201).json({
-			token,
-			position: user.position,
-			isAdmin: true,
-			username: user.username,
-		})
+		return sendAuthResponse(res, user, 201)
 	} catch (error) {
 		console.error('Create admin error:', error)
 		res.status(500).json({ message: 'Error creating admin user' })
@@ -180,26 +217,7 @@ router.post('/register', async (req, res) => {
 			// Don't fail the request if Telegram fails
 		}
 
-		// Generate JWT token
-		const token = jwt.sign(
-			{
-				userId: user._id,
-				isAdmin: user.isAdmin,
-				position: user.position,
-				username: user.username,
-				employeeId: user.employeeId,
-			},
-			process.env.JWT_SECRET,
-			{ expiresIn: '24h' }
-		)
-
-		res.status(201).json({
-			token,
-			position: user.position,
-			isAdmin: user.isAdmin,
-			username: user.username,
-			employeeId: user.employeeId,
-		})
+		return sendAuthResponse(res, user, 201)
 	} catch (error) {
 		console.error('Registration error:', error)
 		res.status(500).json({ message: "Ro'yxatdan o'tishda xatolik yuz berdi" })
@@ -223,26 +241,12 @@ router.post('/login', async (req, res) => {
 			return res.status(400).json({ message: "Login yoki parol noto'g'ri" })
 		}
 
-		// Generate JWT token
-		const token = jwt.sign(
-			{
-				userId: user._id,
-				isAdmin: user.isAdmin,
-				position: user.position,
-				username: user.username,
-				employeeId: user.employeeId,
-			},
-			process.env.JWT_SECRET,
-			{ expiresIn: '24h' }
-		)
+		if (user.isActive === false) {
+			return res.status(403).json({ message: 'Account is inactive' })
+		}
 
-		res.json({
-			token,
-			position: user.position,
-			isAdmin: user.isAdmin,
-			username: user.username,
-			employeeId: user.employeeId,
-		})
+		user.lastLogin = new Date()
+		return sendAuthResponse(res, user)
 	} catch (error) {
 		console.error('Login error:', error)
 		res.status(500).json({ message: 'Kirishda xatolik yuz berdi' })
@@ -325,8 +329,7 @@ router.post('/telegram', async (req, res) => {
 		}
 		await user.save()
 
-		const token = issueAuthToken(user)
-		res.json(buildAuthResponse(user, token))
+		return sendAuthResponse(res, user)
 	} catch (error) {
 		console.error('Telegram login error:', error)
 		res.status(error.status || 500).json({
@@ -350,8 +353,7 @@ router.post('/telegram/link', async (req, res) => {
 
 		const existingLink = await User.findOne({ telegramId })
 		if (existingLink) {
-			const token = issueAuthToken(existingLink)
-			return res.json(buildAuthResponse(existingLink, token))
+			return sendAuthResponse(res, existingLink)
 		}
 
 		const user = await User.findOne({ username })
@@ -379,8 +381,7 @@ router.post('/telegram/link', async (req, res) => {
 		user.lastLogin = new Date()
 		await user.save()
 
-		const token = issueAuthToken(user)
-		res.json(buildAuthResponse(user, token))
+		return sendAuthResponse(res, user)
 	} catch (error) {
 		console.error('Telegram link error:', error)
 		res.status(error.status || 500).json({
@@ -407,6 +408,9 @@ router.post('/telegram/attach', async (req, res) => {
 		let decoded
 		try {
 			decoded = jwt.verify(sessionToken, process.env.JWT_SECRET)
+			if (decoded.type === 'refresh') {
+				return res.status(401).json({ message: 'Invalid session' })
+			}
 		} catch {
 			return res.status(401).json({ message: 'Invalid session' })
 		}
@@ -430,13 +434,159 @@ router.post('/telegram/attach', async (req, res) => {
 		user.telegramUsername = telegramUser.username || ''
 		await user.save()
 
-		const token = issueAuthToken(user)
-		res.json(buildAuthResponse(user, token))
+		return sendAuthResponse(res, user)
 	} catch (error) {
 		console.error('Telegram attach error:', error)
 		res.status(error.status || 500).json({
 			message: error.message || 'Failed to attach Telegram account',
 		})
+	}
+})
+
+router.post('/refresh', async (req, res) => {
+	try {
+		const presentedRefresh =
+			typeof req.body?.refreshToken === 'string'
+				? req.body.refreshToken.trim()
+				: ''
+		const presentedAccess = getTokenFromRequest(req)
+
+		if (presentedRefresh) {
+			try {
+				const decoded = jwt.verify(presentedRefresh, process.env.JWT_SECRET)
+				if (decoded.type !== 'refresh' || !decoded.userId) {
+					return res.status(401).json({
+						message: 'Session expired',
+						code: 'SESSION_EXPIRED',
+					})
+				}
+
+				const user = await User.findById(decoded.userId)
+				if (!user || user.isActive === false) {
+					return res.status(401).json({
+						message: 'Session expired',
+						code: 'SESSION_EXPIRED',
+					})
+				}
+
+				if ((decoded.tokenVersion || 0) !== (user.tokenVersion || 0)) {
+					return res.status(401).json({
+						message: 'Session expired',
+						code: 'SESSION_EXPIRED',
+					})
+				}
+
+				if (
+					!hashesMatch(user.refreshTokenHash, hashToken(presentedRefresh))
+				) {
+					return res.status(401).json({
+						message: 'Session expired',
+						code: 'SESSION_EXPIRED',
+					})
+				}
+
+				user.lastLogin = new Date()
+				return sendAuthResponse(res, user)
+			} catch (error) {
+				if (error.name !== 'TokenExpiredError' || !presentedAccess) {
+					return res.status(401).json({
+						message: 'Session expired',
+						code: 'SESSION_EXPIRED',
+					})
+				}
+			}
+		}
+
+		if (presentedAccess) {
+			const decoded = jwt.verify(presentedAccess, process.env.JWT_SECRET, {
+				ignoreExpiration: true,
+			})
+
+			if (decoded.type === 'refresh' || !decoded.userId) {
+				return res.status(401).json({
+					message: 'Session expired',
+					code: 'SESSION_EXPIRED',
+				})
+			}
+
+			const issuedAt = Number(decoded.iat || 0)
+			if (
+				!issuedAt ||
+				Math.floor(Date.now() / 1000) - issuedAt > ACCESS_REFRESH_WINDOW_SECONDS
+			) {
+				return res.status(401).json({
+					message: 'Session expired',
+					code: 'SESSION_EXPIRED',
+				})
+			}
+
+			const user = await User.findById(decoded.userId)
+			if (!user || user.isActive === false) {
+				return res.status(401).json({
+					message: 'Session expired',
+					code: 'SESSION_EXPIRED',
+				})
+			}
+
+			if ((decoded.tokenVersion || 0) !== (user.tokenVersion || 0)) {
+				return res.status(401).json({
+					message: 'Session expired',
+					code: 'SESSION_EXPIRED',
+				})
+			}
+
+			user.lastLogin = new Date()
+			return sendAuthResponse(res, user)
+		}
+
+		return res.status(401).json({
+			message: 'Session expired',
+			code: 'SESSION_EXPIRED',
+		})
+	} catch (error) {
+		console.error('Refresh error:', error)
+		return res.status(401).json({
+			message: 'Session expired',
+			code: 'SESSION_EXPIRED',
+		})
+	}
+})
+
+router.post('/logout', async (req, res) => {
+	try {
+		const presentedRefresh =
+			typeof req.body?.refreshToken === 'string'
+				? req.body.refreshToken.trim()
+				: ''
+		const presentedAccess = getTokenFromRequest(req)
+		const presented = presentedRefresh || presentedAccess
+
+		if (presented) {
+			try {
+				const decoded = jwt.verify(presented, process.env.JWT_SECRET, {
+					ignoreExpiration: true,
+				})
+				if (decoded.userId) {
+					await User.updateOne(
+						{ _id: decoded.userId },
+						{
+							$inc: { tokenVersion: 1 },
+							$set: {
+								refreshTokenHash: null,
+								refreshTokenExpiresAt: null,
+							},
+						},
+					)
+				}
+			} catch {
+				// already signed out locally
+			}
+		}
+
+		return res.json({ ok: true })
+	} catch (error) {
+		console.error('Logout error:', error)
+		return res.json({ ok: true })
 	}
 })
 

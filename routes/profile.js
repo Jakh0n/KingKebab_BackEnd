@@ -56,7 +56,7 @@ router.post('/upload-image', auth, upload.single('image'), async (req, res) => {
 			req.user._id,
 			{ photoUrl: imageUrl },
 			{ new: true }
-		).select('-password')
+		).select('-password -refreshTokenHash')
 
 		res.json({
 			message: 'Image uploaded successfully',
@@ -96,7 +96,7 @@ router.put('/', auth, async (req, res) => {
 			req.user._id,
 			{ $set: updates },
 			{ new: true, runValidators: true }
-		).select('-password')
+		).select('-password -refreshTokenHash')
 
 		if (!user) {
 			return res.status(404).json({ message: 'User not found' })
@@ -112,7 +112,7 @@ router.put('/', auth, async (req, res) => {
 // Get user profile
 router.get('/', auth, async (req, res) => {
 	try {
-		const user = await User.findById(req.user._id).select('-password')
+		const user = await User.findById(req.user._id).select('-password -refreshTokenHash')
 		if (!user) {
 			return res.status(404).json({ message: 'User not found' })
 		}

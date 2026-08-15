@@ -6,7 +6,7 @@ const { isAdmin, adminAuth } = require('../middleware/auth')
 // Get all users (admin only)
 router.get('/', isAdmin, async (req, res) => {
 	try {
-		const users = await User.find({}, { password: 0 })
+		const users = await User.find({}, { password: 0, refreshTokenHash: 0 })
 		res.json(users)
 	} catch (err) {
 		console.error('Get users error:', err)
